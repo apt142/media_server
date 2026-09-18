@@ -243,19 +243,33 @@ Then, from another Mac, mount the share. On the Roku, open Plex and confirm the 
 
 ---
 
-## Rip a DVD
+## Rip a DVD or Blu-ray
 
 On the server Mac:
 
 1. Plug in the USB optical drive. Insert a disc you own.
 2. MakeMKV must already be registered (section 2).
-3. Run:
+3. Run, with a disc in the drive:
+
+   ```bash
+   ./rip-dvd.sh
+   ```
+
+   That reads the disc label (often something like `THE_MATRIX`) and looks it up in Apple’s movie catalog. Pick a number, or type `Title 1999` yourself. To skip the prompt and take the first match:
+
+   ```bash
+   ./rip-dvd.sh --yes
+   ```
+
+   You can still name it by hand:
 
    ```bash
    ./rip-dvd.sh "The Matrix" 1999
    ```
 
-That decrypts with MakeMKV, then converts the longest title with HandBrake’s **Super HQ 480p30 Surround** preset (slow x264, proper DVD deinterlace). Writes:
+   Disc labels are not a fingerprint. Box-set discs, “DVD_VIDEO”, and TV seasons often miss or match the wrong film — read the list before you accept it.
+
+That decrypts with MakeMKV, then converts the longest title with HandBrake. The script reads the disc type and picks the preset: **Super HQ 480p30 Surround** for a DVD, **HQ 1080p30 Surround** for a Blu-ray. Override with `--preset "Super HQ 1080p30 Surround"` if you want a slower, better Blu-ray encode. Writes:
 
 ```
 ~/Media/Movies/The Matrix (1999)/The Matrix (1999).mp4
@@ -263,23 +277,125 @@ That decrypts with MakeMKV, then converts the longest title with HandBrake’s *
 
 Plex names movies from that folder. Expect **longer** than the first rips: MakeMKV 20–40 minutes, then HandBrake can take another 30–90 minutes for a feature. Leave the USB drive plugged in until MakeMKV finishes.
 
+Blu-ray is a different scale. The raw rip is 25–35 GB, so keep that much free, and the 1080p encode runs for several hours on an M1. Check free space with `df -h ~/Media` before you start.
+
+**If it rips the wrong thing** (a commentary cut, a bonus feature, a decoy), see [Picking the right title](#picking-the-right-title).
+
 Older rips done with the original script used a VideoToolbox quality setting that crushed DVD video. Re-rip those titles if they look noisy.
 
 Then in Plex: Movies → **Scan Library Files**. On the Roku, open Movies and play it.
 
-**TV discs:** rip the same way, then move the `.mp4` into Plex’s TV layout:
+**TV discs:**
+
+```bash
+./rip-dvd.sh --tv
+```
+
+Looks up the disc label in iTunes **TV seasons**, then asks for the show/season if you did not pass them. It numbers this disc from **e01** unless you pass `--episode` (use that for disc 2 of a season, e.g. `--episode 5`).
+
+It scans MakeMKV titles, drops shorts and “Play All” bundles (a 2-hour Firefly *Serenity* is kept; a 3-hour Play All is not), rips **every remaining title in one go**, and matches episode **names** by runtime so numbering is disc order, not iTunes aired order.
 
 ```
-~/Media/TV/Show Name/Season 01/Show Name - s01e01 - Episode Name.mp4
+~/Media/TV/Firefly/Season 01/Firefly - s01e01 - Serenity.mp4
+~/Media/TV/Firefly/Season 01/Firefly - s01e02 - The Train Job.mp4
 ```
+
+Plex often uses **aired** order for Firefly (`The Train Job` as e01). If metadata looks swapped, in Plex: the show → three dots → **Episode ordering** → **DVD Order**.
+
+Do **not** pass `--episode 2` to mean “rip the second episode.” That flag only shifts numbering, which is why a second run named files e02 and e03.
+
+You can still skip prompts:
+
+```bash
+./rip-dvd.sh --tv "Firefly" --season 1
+./rip-dvd.sh --tv "Firefly" --season 1 --episode 5
+```
+
+Title order is not a fingerprint. Short extras can still sneak in; raise `--min-length` (for example `1200` for 20-minute cuts). If two episodes were merged into one DVD title, you get one file, not two.
+
+Then in Plex: **TV** library → **Scan Library Files**. The Roku uses that same library.
 
 Flags:
 
-- `--min-length 3600` — skip titles under an hour (trailers, extras)
+- `--tv` — episode mode into `~/Media/TV`
+- `--season N` / `--episode N` — TV numbering
+- `--list` — print the disc's titles and stop
+- `--title N` — rip that exact title instead of guessing
+- `--all` — decrypt every title to `~/Media/Rips/raw/` and stop, so you can sort them out yourself
+- `--preset NAME` — HandBrake preset, overriding the disc-type default
+- `--min-length 3600` — skip titles under an hour (trailers, extras). TV default is 900 seconds (15 minutes).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
 - `--direct` — skip HandBrake and keep the DVD MPEG-2 stream as `.mkv`. Closest to the disc. Plex will transcode that for the Roku; 480p on an M1 is light.
+- `--yes` — take the first iTunes match without asking
 
 If MakeMKV says the application is too old or the key is invalid, repeat section 2 with the current forum key.
+
+### Picking the right title
+
+Blu-rays rarely have one obvious movie on them. A disc may carry the feature, a director's-commentary version of the same runtime, a few bonus cuts, and — on protected discs — dozens of decoy playlists that are deliberately near the right length. Guessing wrong is normal.
+
+List what is actually on the disc:
+
+```bash
+./rip-dvd.sh --list
+```
+
+```
+TITLE  LENGTH     SIZE      SOURCE         FLAG   NAME
+0      2:10:32    26.1 GB   00800.mpls     main   title_t00.mkv
+1      2:10:32    28.9 GB   00801.mpls     -      title_t01.mkv
+2      4:20:00    41.0 GB   00999.mpls     -      title_t02.mkv
+```
+
+`main` means MakeMKV's Java playlist detection flagged that one as the real feature — trust it. That flag only appears when Java is working, so if nothing is flagged, fix Java first (see [the JRE section](#troubleshooting)) and list again.
+
+With no flag to go on, judge by **length**, not size. The commentary version above is the *bigger* file because it carries an extra audio track, which is exactly the trap. Match the runtime against the box or a search for the film; a title far longer than the movie is usually a Play All or a decoy.
+
+Then rip that one:
+
+```bash
+./rip-dvd.sh --title 0 "Knives Out" 2019
+```
+
+`--title` works with `--tv` flags off only; TV discs already rip every episode-length title.
+
+Unsure between two? Rip the candidate without encoding, which is much faster, and play it to check:
+
+```bash
+./rip-dvd.sh --title 0 --direct --keep-raw "Knives Out" 2019
+```
+
+The script picks the `main`-flagged title when one exists, otherwise the longest. It used to rip every title and keep the largest file, which is what sent a commentary cut into the library.
+
+### Rip everything and sort it out yourself
+
+When the disc is fighting you, stop guessing and pull all of it:
+
+```bash
+./rip-dvd.sh --all "Knives Out"
+```
+
+It decrypts every title over the minimum length into one folder and stops there. **Nothing is encoded and nothing is added to Plex** — this is a staging area, not a library.
+
+```
+~/Media/Rips/raw/Knives Out/t00 - 2h10m32s - main.mkv
+~/Media/Rips/raw/Knives Out/t01 - 2h10m32s.mkv
+~/Media/Rips/raw/Knives Out/t05 - 8m14s.mkv
+```
+
+Filenames carry the title number, the runtime, and the `main` flag when MakeMKV identified the feature, so you can usually spot the keeper without playing anything. Those `.mkv` files play in VLC or IINA directly.
+
+Before it starts, it prints how much space the titles need against how much you have free — on a Blu-ray this is routinely 90 GB or more, so read that line. Pass `--yes` to skip the confirmation.
+
+Some titles will fail on a protected disc. That is expected: decoy playlists are designed not to decrypt, and the run continues past them. Re-running skips files you already have, so an interrupted rip picks up where it left off.
+
+Once you know which one you want, either encode it properly:
+
+```bash
+./rip-dvd.sh --title 0 "Knives Out" 2019
+```
+
+or, if the raw file is good enough, move it into place yourself. Plex reads the folder name, so it needs to land as `~/Media/Movies/Knives Out (2019)/Knives Out (2019).mkv`. Delete the staging folder when you are done — it is large and Plex does not index it.
 
 ---
 
@@ -298,6 +414,63 @@ rm -rf ~/Media.internal-backup
 ```
 
 Leave the USB drive plugged into the **server** Mac. If you unplug it, Plex and the share go empty until the volume remounts.
+
+---
+
+## Remote desktop (virtual display)
+
+Use this to sit at another Mac and control the media-server laptop — Plex, MakeMKV, Terminal — as if it had a monitor attached. Both machines need to be Apple Silicon on macOS Sonoma or later (Tahoe is fine). Stay on the LAN. Do not port-forward Screen Sharing to the internet.
+
+### On the media-server Mac (once)
+
+1. Plug it in. Leave the lid **open**, or use a USB-C HDMI dummy plug if you want the lid closed. If it sleeps, Screen Sharing dies with it.
+2. System Settings → **General** → **Sharing**.
+3. Turn **Screen Sharing** on.
+4. Click the info button (ⓘ) next to Screen Sharing.
+5. Allow access for **your user** (the account you log into that laptop with). “All users” also works on a machine nobody else uses.
+6. **Computer Settings…** → you can set a VNC password. Useful if you connect from a non-Apple client. For Mac-to-Mac, your login is enough.
+7. Confirm Local Network permission if macOS asks: System Settings → Privacy & Security → Local Network → allow **Screen Sharing** / **screensharingd**.
+
+The address is:
+
+```
+vnc://MediaServer.local
+```
+
+If you did not rename the laptop, `./status.sh` prints the Bonjour name.
+
+### On the Mac you sit at
+
+1. Same Wi-Fi (or Ethernet) as the server. Not a guest network.
+2. Open **Screen Sharing** (`/System/Library/CoreServices/Applications/Screen Sharing.app`, or Spotlight: “Screen Sharing”).
+3. Connect to `MediaServer.local` (or `vnc://MediaServer.local` from Finder → Go → Connect to Server).
+4. Sign in as the **server Mac’s** user, not this Mac’s user.
+5. When **Select Screen Sharing Type** appears:
+   - Choose **High Performance**
+   - Display Type: **1 Virtual Display** (or 2 if you want two remote desktops)
+   - Continue
+6. You should get a window that *is* the laptop’s desktop, even if its lid is closed (as long as it stayed awake).
+
+If that dialog never appears, the connection fell back to Standard. You are then mirroring the built-in LCD. Lid closed with no dummy plug still sleeps the M1, so High Performance + virtual display does not replace keeping it awake.
+
+### After you are connected
+
+Inside the Screen Sharing window (this is the *remote* Mac’s System Settings):
+
+1. Apple menu → System Settings → **Displays**.
+2. Turn on **Dynamic resolution** if you want the virtual display to match the window size.
+3. Arrange it as the main display if the built-in lid display is still listed.
+
+Quit Screen Sharing when you are done. Plex and the SMB share keep running; you do not need this session open to watch the Roku.
+
+### If it will not connect
+
+- Server is awake and Screen Sharing is on.
+- You used the server account password.
+- Try the LAN IP: System Settings → Wi-Fi → Details on the server, then `vnc://192.168.x.x`.
+- Firewall: System Settings → Network → Firewall. If it is on, allow Screen Sharing / incoming for port 5900.
+- High Performance needs UDP **5900–5902** between the two Macs. Client isolation on Wi-Fi blocks that.
+- Only one High Performance session at a time.
 
 ---
 
@@ -337,6 +510,35 @@ Keep it plugged in. A laptop used as a 24/7 server on battery will ruin the batt
 - Disc is inserted, drive has a light / shows up in Finder.
 - Removable Volumes permission for MakeMKV (and Terminal, if using the script).
 - Register the current beta key (section 2).
+
+**MakeMKV says the disc needs a Java runtime (JRE 8+)**
+
+This only happens on **Blu-ray**, and it is not about your DVDs. Some Blu-rays (Lionsgate titles like *Knives Out*, for instance) ship a Java program on the disc that MakeMKV has to run to pick the real playlist or finish the BD+ handshake. Without a working JRE, the disc either refuses to open or shows hundreds of decoy titles.
+
+Installing the newest JDK does not fix it. **MakeMKV fails on JDK 25 and newer** — it needs Java 17:
+
+```bash
+brew install openjdk@17
+```
+
+Then point MakeMKV at it, either in the app (**MakeMKV → Preferences → Protection → Custom Java executable location**) or from the shell:
+
+```bash
+/opt/homebrew/opt/openjdk@17/bin/java -version   # expect openjdk 17.x
+printf 'app_Java = "/opt/homebrew/opt/openjdk@17/bin/java"\n' >> ~/Library/MakeMKV/settings.conf
+```
+
+Give it the path to the `java` **executable**, not the folder. Quit MakeMKV fully and reopen it. `setup.sh` now does all of this for you.
+
+To confirm it took, scan the disc and look for the Java line:
+
+```bash
+/Applications/MakeMKV.app/Contents/MacOS/makemkvcon -r info disc:0 | grep -i java
+```
+
+You want `Using Java runtime from /opt/homebrew/opt/openjdk@17/bin/java`. If it still says `/usr/bin/java`, the setting did not save — check whether your MakeMKV keeps settings in `~/.MakeMKV/settings.conf` instead.
+
+Your system `java` can stay on whatever version you like; this setting only affects MakeMKV.
 
 **One movie stalls after a few seconds, then speed-plays with no sound**
 

@@ -14,6 +14,11 @@ PLEX_APP="/Applications/Plex Media Server.app"
 MAKE_MKV_DOWNLOAD_PAGE="https://www.makemkv.com/download/"
 MAKE_MKV_BETA_KEY_PAGE="https://forum.makemkv.com/forum/viewtopic.php?t=1053"
 
+# MakeMKV runs the disc's own Java code for some Blu-ray protections. JDK 25 and
+# newer fail that; 17 is the version the MakeMKV forum reports as working.
+MAKE_MKV_JAVA_FORMULA="openjdk@17"
+MAKE_MKV_JAVA_COMMAND="/opt/homebrew/opt/openjdk@17/bin/java"
+
 print_step() {
   printf '\n==> %s\n' "$*"
 }
@@ -54,6 +59,41 @@ ffprobe_command() {
 
 bonjour_name() {
   scutil --get LocalHostName
+}
+
+# MakeMKV has used both locations over the years. Prefer whichever already exists.
+makemkv_settings_file() {
+  local library_path="${HOME}/Library/MakeMKV/settings.conf"
+  local dot_path="${HOME}/.MakeMKV/settings.conf"
+
+  if [[ -f "$library_path" ]]; then
+    printf '%s\n' "$library_path"
+    return
+  fi
+  if [[ -f "$dot_path" ]]; then
+    printf '%s\n' "$dot_path"
+    return
+  fi
+  printf '%s\n' "$library_path"
+}
+
+configured_makemkv_java() {
+  local settings_file
+  settings_file="$(makemkv_settings_file)"
+  [[ -f "$settings_file" ]] || return
+  sed -n 's/^app_Java[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$settings_file" | tail -1
+}
+
+set_makemkv_java_path() {
+  local java_path="$1"
+  local settings_file
+  settings_file="$(makemkv_settings_file)"
+
+  mkdir -p "$(dirname "$settings_file")"
+  touch "$settings_file"
+  # Drop any previous app_Java line, then append the one we want.
+  sed -i '' '/^app_Java[[:space:]]*=/d' "$settings_file"
+  printf 'app_Java = "%s"\n' "$java_path" >> "$settings_file"
 }
 
 media_root_is_symlink() {

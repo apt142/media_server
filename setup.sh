@@ -105,6 +105,20 @@ install_makemkv() {
   xattr -dr com.apple.quarantine "$MAKE_MKV_APP" || true
 }
 
+configure_makemkv_java() {
+  print_step "Installing Java 17 for MakeMKV disc protection"
+  print_line "Some Blu-ray protections make MakeMKV run the disc's own Java code. DVDs never need this."
+  brew install "$MAKE_MKV_JAVA_FORMULA"
+
+  if [[ ! -x "$MAKE_MKV_JAVA_COMMAND" ]]; then
+    print_error "Expected Java at ${MAKE_MKV_JAVA_COMMAND}. Set it by hand in MakeMKV → Preferences → Protection."
+    return
+  fi
+
+  set_makemkv_java_path "$MAKE_MKV_JAVA_COMMAND"
+  print_line "MakeMKV will use ${MAKE_MKV_JAVA_COMMAND}"
+}
+
 create_media_folders() {
   print_step "Creating ${MEDIA_ROOT}"
   mkdir -p \
@@ -222,6 +236,7 @@ sudo -v
 install_homebrew_if_needed
 install_brew_packages
 install_makemkv
+configure_makemkv_java
 create_media_folders
 set_computer_name_if_requested
 enable_smb_daemon
