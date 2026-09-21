@@ -16,6 +16,8 @@ print_yes_no() {
   printf '  %-22s no\n' "$label"
 }
 
+SHOW_LOOKUP_COMMAND="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/show_lookup.py"
+
 host_name="$(bonjour_name)"
 sleep_on_adapter="$(pmset -g custom 2>/dev/null | awk '/AC Power/{found=1} found && /[[:space:]]sleep /{print $2; exit}')"
 media_location="$(resolved_media_root)"
@@ -48,6 +50,25 @@ if pgrep -x "Plex Media Server" >/dev/null; then
   print_yes_no "Plex running" 1
 else
   print_yes_no "Plex running" 0
+fi
+if [[ -x "$SHOW_LOOKUP_COMMAND" ]]; then
+  print_yes_no "TV episode lookup" 1
+else
+  print_yes_no "TV episode lookup" 0
+fi
+
+print_line ""
+print_line "MakeMKV Java (only Blu-ray protections need it; JDK 25+ does not work)"
+makemkv_java="$(configured_makemkv_java || true)"
+if [[ -z "$makemkv_java" ]]; then
+  print_line "  configured            nothing set, so MakeMKV picks its own"
+  print_line "  fix                   brew install ${MAKE_MKV_JAVA_FORMULA}, then re-run ./setup.sh"
+elif [[ -x "$makemkv_java" ]]; then
+  print_line "  configured            ${makemkv_java}"
+  print_line "  version               $("$makemkv_java" -version 2>&1 | head -1)"
+else
+  print_line "  configured            ${makemkv_java}"
+  print_line "  problem               that path is not executable, so MakeMKV cannot use it"
 fi
 
 print_line ""

@@ -285,39 +285,10 @@ Older rips done with the original script used a VideoToolbox quality setting tha
 
 Then in Plex: Movies → **Scan Library Files**. On the Roku, open Movies and play it.
 
-**TV discs:**
-
-```bash
-./rip-dvd.sh --tv
-```
-
-Looks up the disc label in iTunes **TV seasons**, then asks for the show/season if you did not pass them. It numbers this disc from **e01** unless you pass `--episode` (use that for disc 2 of a season, e.g. `--episode 5`).
-
-It scans MakeMKV titles, drops shorts and “Play All” bundles (a 2-hour Firefly *Serenity* is kept; a 3-hour Play All is not), rips **every remaining title in one go**, and matches episode **names** by runtime so numbering is disc order, not iTunes aired order.
-
-```
-~/Media/TV/Firefly/Season 01/Firefly - s01e01 - Serenity.mp4
-~/Media/TV/Firefly/Season 01/Firefly - s01e02 - The Train Job.mp4
-```
-
-Plex often uses **aired** order for Firefly (`The Train Job` as e01). If metadata looks swapped, in Plex: the show → three dots → **Episode ordering** → **DVD Order**.
-
-Do **not** pass `--episode 2` to mean “rip the second episode.” That flag only shifts numbering, which is why a second run named files e02 and e03.
-
-You can still skip prompts:
-
-```bash
-./rip-dvd.sh --tv "Firefly" --season 1
-./rip-dvd.sh --tv "Firefly" --season 1 --episode 5
-```
-
-Title order is not a fingerprint. Short extras can still sneak in; raise `--min-length` (for example `1200` for 20-minute cuts). If two episodes were merged into one DVD title, you get one file, not two.
-
-Then in Plex: **TV** library → **Scan Library Files**. The Roku uses that same library.
+**TV discs:** use [`./rip-shows.sh`](#rip-a-tv-series). `rip-dvd.sh` is movies only — its old `--tv` mode guessed the show from the disc label alone, which is what misnamed the Firefly episodes, and it has been removed.
 
 Flags:
 
-- `--tv` — episode mode into `~/Media/TV`
 - `--season N` / `--episode N` — TV numbering
 - `--list` — print the disc's titles and stop
 - `--title N` — rip that exact title instead of guessing
@@ -357,7 +328,7 @@ Then rip that one:
 ./rip-dvd.sh --title 0 "Knives Out" 2019
 ```
 
-`--title` works with `--tv` flags off only; TV discs already rip every episode-length title.
+`--title` is for movies. TV discs are handled by [`rip-shows.sh`](#rip-a-tv-series), which rips every episode-length title.
 
 Unsure between two? Rip the candidate without encoding, which is much faster, and play it to check:
 
@@ -396,6 +367,114 @@ Once you know which one you want, either encode it properly:
 ```
 
 or, if the raw file is good enough, move it into place yourself. Plex reads the folder name, so it needs to land as `~/Media/Movies/Knives Out (2019)/Knives Out (2019).mkv`. Delete the staging folder when you are done — it is large and Plex does not index it.
+
+---
+
+## Rip a TV series
+
+`rip-shows.sh` is the TV ripper. It reads a whole disc in one pass, works out which episodes are on it, and names them the way Plex wants. DVD and Blu-ray both work, and it picks the encoding preset from whichever it finds.
+
+```bash
+./rip-shows.sh
+```
+
+That is usually the entire command. It prints what it worked out, shows you the episode list, and waits for a yes before touching anything:
+
+```
+==> Reading the disc
+Disc label reads "FIREFLY_D1", which looks like "Firefly".
+Show: Firefly
+This show publishes a DVD running order, so that is what the episodes are numbered by.
+Firefly only ran one season, so this is season 1.
+Disc 1 by the label, so this starts at episode 1.
+
+==> Episodes on this disc
+  title 0   2:02:00     ->  s01e01  Serenity
+  title 1   0:44:00     ->  s01e02  The Train Job
+  title 2   0:43:30     ->  s01e03  Bushwhacked
+
+Confident: the episode lengths agree with this starting point.
+Rip these? [y/N]
+```
+
+Put in disc 2 and run the same command. It sees season 1 already has episodes through 3 and starts at 4.
+
+### How it identifies a disc
+
+Disc labels are unreliable — `DVD_VIDEO` and `LOGICAL_VOLUME_ID` are common, and even a good label rarely says which disc of the set it is. So the label is only one signal of several, tried in order of how much they can be trusted:
+
+1. **What you passed in.** `--show`, `--season`, and `--episode` always win.
+2. **What is already in your library.** If `~/Media/TV/Firefly/Season 01/` holds episodes through e03, this disc starts at e04. This is the signal that makes multi-disc sets work, and it needs nothing from the disc at all.
+3. **The disc label**, for the show name, season, and disc number when it happens to carry them.
+4. **Episode lengths.** The disc's shape — how many episodes and whether any run long or short — is matched against the season. A double-length premiere like Firefly's *Serenity* pins the disc exactly.
+5. **Asking you**, with a searchable show list, when the rest came up short.
+
+Episode data comes from [TVmaze](https://www.tvmaze.com), which needs no API key or signup.
+
+### Confident vs. not confident
+
+Every plan says which it is, and that distinction is worth reading:
+
+**Confident** means something actually pinned the disc down — a long or short episode matched, or the disc holds the whole season.
+
+**Not confident** means the disc could sit in several places and nothing ruled the others out. This is normal and expected for a mid-season disc of a show where every episode runs 44 minutes; there is genuinely no way to tell disc 3 from disc 4 by content alone. Read the episode names before saying yes. If they are wrong, say where to start:
+
+```bash
+./rip-shows.sh --episode 9
+```
+
+If you give `--episode` and the lengths disagree with it, it tells you so rather than quietly going along:
+
+```
+NOT confident: the episode lengths look more like this disc starts at episode 1.
+```
+
+### Episode order
+
+Shows that shipped out of broadcast order get numbered in **DVD order** automatically, because that is the order on the disc in your hand. Firefly is the usual example: *Serenity* is the DVD's first episode but aired eleventh.
+
+When that happens, set the show to DVD order in Plex too, or Plex's metadata will not line up with the filenames: the show → three dots → **Episode ordering** → **DVD Order**. Force it either way with `--order aired` or `--order dvd`.
+
+### Checking before you commit
+
+`--list` runs the whole identification and prints the plan without ripping:
+
+```bash
+./rip-shows.sh --list
+```
+
+Files land as:
+
+```
+~/Media/TV/Firefly/Season 01/Firefly - s01e01 - Serenity.mp4
+~/Media/TV/Firefly/Season 01/Firefly - s01e02 - The Train Job.mp4
+```
+
+Re-running skips episodes you already have, so an interrupted disc resumes. Menus, extras, and "Play All" bundles are dropped automatically; a genuine double-length episode is kept.
+
+Flags:
+
+- `--show "Name"` — skip the label guess and search for this show
+- `--season N` / `--episode N` — season, and the first episode on this disc
+- `--order aired|dvd` — force an episode order
+- `--list` — show the plan, rip nothing
+- `--min-length 1200` — ignore titles under 20 minutes (default 900 seconds)
+- `--preset NAME` — override the disc-type HandBrake preset
+- `--direct` — skip HandBrake, keep the decrypted `.mkv`
+- `--keep-raw` — keep the MakeMKV files in `~/Media/Rips/raw`
+- `--yes` — accept every guess without asking. It refuses to invent a show or season it could not determine, so unattended runs usually want `--show` and `--season` too.
+
+Then in Plex: **TV** library → **Scan Library Files**.
+
+### Tests
+
+The episode-matching logic has unit tests. They stub out TVmaze, so they run offline in well under a second:
+
+```bash
+python3 -m unittest test_show_lookup
+```
+
+Worth running if you change how discs are identified — they cover the Play All and duplicate-playlist filtering, the label parsing, and the confidence rules that decide whether an episode mapping can be trusted.
 
 ---
 
@@ -537,6 +616,8 @@ To confirm it took, scan the disc and look for the Java line:
 ```
 
 You want `Using Java runtime from /opt/homebrew/opt/openjdk@17/bin/java`. If it still says `/usr/bin/java`, the setting did not save — check whether your MakeMKV keeps settings in `~/.MakeMKV/settings.conf` instead.
+
+`./status.sh` also reports which Java MakeMKV is set to use, and whether that path actually works.
 
 Your system `java` can stay on whatever version you like; this setting only affects MakeMKV.
 

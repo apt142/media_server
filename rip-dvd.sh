@@ -5,36 +5,23 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 MINIMUM_TITLE_LENGTH_SECONDS=300
-TV_MINIMUM_TITLE_LENGTH_SECONDS=900
-# Picked from the disc type at run time. Encoding a Blu-ray with the 480p preset
-# would throw away most of the picture.
-DVD_HANDBRAKE_PRESET="Super HQ 480p30 Surround"
-BLURAY_HANDBRAKE_PRESET="HQ 1080p30 Surround"
-HANDBRAKE_PRESET=""
-# DVDs carry telecine flags that produce the timestamps Roku stalls on, so they
-# get a constant rate. Blu-ray video is already constant; forcing 30 there would
-# only duplicate frames on a 24fps film.
-HANDBRAKE_RATE_FLAG="--cfr"
 is_keeping_raw_rip=0
 is_copying_without_encode=0
 is_accepting_first_lookup=0
 is_min_length_explicit=0
-is_ripping_tv=0
 is_listing_titles=0
 is_ripping_all_titles=0
 SELECTED_TITLE_ID=""
 MOVIE_TITLE=""
 MOVIE_YEAR=""
-SHOW_NAME=""
-SEASON_NUMBER=""
-STARTING_EPISODE=""
-ITUNES_COLLECTION_ID=""
 
 usage() {
   cat <<EOF
 Usage:
   ./rip-dvd.sh ["Movie Title"] [year]
-  ./rip-dvd.sh --tv ["Show Name"] [--season N] [--episode N]
+
+Movies only. TV discs are handled by ./rip-shows.sh, which identifies the show
+and its episodes rather than guessing from the disc label.
 
 Reads the disc in the USB drive with MakeMKV, then converts with HandBrake.
 DVDs use "${DVD_HANDBRAKE_PRESET}", Blu-rays use "${BLURAY_HANDBRAKE_PRESET}".
@@ -43,18 +30,9 @@ Movies keep the title MakeMKV flags as the main feature, or the longest one if
 nothing is flagged, and file it as:
   ${MOVIES_DIRECTORY}/Movie Title (Year)/Movie Title (Year).mp4
 
-TV (--tv) keeps every title longer than the minimum (15 minutes by default),
-asks for show / season / first episode on this disc, and files them as:
-  ${TV_DIRECTORY}/Show Name/Season 01/Show Name - s01e01 - Episode.mp4
+If you omit the name, the script reads the disc label and looks it up in iTunes.
 
-If you omit the name, the script reads the disc label and looks it up in
-iTunes (movies, or TV seasons with --tv).
-
-  --tv                   Rip every episode-length title into the TV library
-  --season N             Season number (TV)
-  --episode N            First episode number on this disc (TV, default: 1).
-                         Use this for disc 2+ of a season, not to rip one episode.
-  --min-length SECONDS   Ignore shorter titles (movie default: ${MINIMUM_TITLE_LENGTH_SECONDS}; TV default: ${TV_MINIMUM_TITLE_LENGTH_SECONDS})
+  --min-length SECONDS   Ignore shorter titles (default: ${MINIMUM_TITLE_LENGTH_SECONDS})
   --list                 Print the titles on the disc and stop. Use this when the
                          wrong feature got ripped, then re-run with --title N.
   --title N              Rip MakeMKV title N instead of guessing
@@ -72,25 +50,9 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tv)
-      is_ripping_tv=1
-      shift
-      ;;
-    --season)
-      SEASON_NUMBER="${2:-}"
-      if [[ -z "$SEASON_NUMBER" ]]; then
-        print_error "--season needs a number"
-        exit 1
-      fi
-      shift 2
-      ;;
-    --episode)
-      STARTING_EPISODE="${2:-}"
-      if [[ -z "$STARTING_EPISODE" ]]; then
-        print_error "--episode needs a number"
-        exit 1
-      fi
-      shift 2
+    --tv|--season|--episode)
+      print_error "TV ripping moved to ./rip-shows.sh, which identifies episodes properly."
+      exit 1
       ;;
     --list)
       is_listing_titles=1
@@ -169,97 +131,6 @@ plex_movie_folder_name() {
   printf '%s' "$MOVIE_TITLE"
 }
 
-sanitize_file_component() {
-  python3 -c '
-import re
-import sys
-
-name = sys.argv[1]
-name = re.sub(r"[/\\\\:]", " - ", name)
-name = re.sub(r"\s+", " ", name).strip(" .")
-print(name)
-' "$1"
-}
-
-padded_two_digits() {
-  printf '%02d' "$1"
-}
-
-# MakeMKV reports real problems (missing key, Java, unreadable sectors) as MSG
-# lines on stdout. Hiding those is why a failed disc used to look like an empty one.
-print_makemkv_messages() {
-  python3 -c '
-import re
-import sys
-
-for line in sys.stdin.read().splitlines():
-    match = re.match(r"^MSG:\d+,\d+,\d+,\"(.*?)\",", line)
-    if match:
-        print("  " + match.group(1))
-'
-}
-
-# Scanning a Blu-ray is slow, so keep the first result for the rest of the run.
-DISC_INFO_CACHE=""
-is_disc_scanned=0
-
-scan_disc_info() {
-  if [[ "$is_disc_scanned" -eq 0 ]]; then
-    DISC_INFO_CACHE="$("$MAKE_MKV_COMMAND" -r --minlength=1 info disc:0)" || true
-    is_disc_scanned=1
-    printf '%s' "$DISC_INFO_CACHE" | print_makemkv_messages >&2
-  fi
-  printf '%s' "$DISC_INFO_CACHE"
-}
-
-# CINFO:1 is the disc type, e.g. "Blu-ray disc" or "DVD disc".
-disc_media_type() {
-  scan_disc_info \
-    | sed -n 's/^CINFO:1,[0-9]*,"\(.*\)"[[:space:]]*$/\1/p' \
-    | tail -1
-}
-
-choose_handbrake_preset() {
-  local media_type
-  media_type="$(disc_media_type)"
-
-  if [[ "$media_type" == *[Bb]lu-ray* ]]; then
-    HANDBRAKE_RATE_FLAG="--pfr"
-    HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$BLURAY_HANDBRAKE_PRESET}"
-    print_step "Blu-ray detected, encoding with \"${HANDBRAKE_PRESET}\""
-    print_line "Leave about 30 GB free for the raw rip. The encode takes hours, not minutes."
-  else
-    HANDBRAKE_RATE_FLAG="--cfr"
-    HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$DVD_HANDBRAKE_PRESET}"
-    print_step "DVD detected, encoding with \"${HANDBRAKE_PRESET}\""
-  fi
-}
-
-read_disc_label() {
-  local disc_info
-  disc_info="$(scan_disc_info)"
-  python3 -c '
-import re
-import sys
-
-text = sys.stdin.read()
-title = ""
-volume = ""
-for line in text.splitlines():
-    match = re.match(r"^CINFO:2,\d+,\"(.*)\"\s*$", line)
-    if match:
-        title = match.group(1)
-        continue
-    match = re.match(r"^CINFO:30,\d+,\"(.*)\"\s*$", line)
-    if match and not title:
-        title = match.group(1)
-        continue
-    match = re.match(r"^CINFO:32,\d+,\"(.*)\"\s*$", line)
-    if match:
-        volume = match.group(1)
-print(title or volume)
-' <<< "$disc_info"
-}
 
 search_query_from_disc_label() {
   python3 -c '
@@ -271,17 +142,6 @@ label = re.sub(r"\s+", " ", label).strip()
 label = re.sub(r"[\s]+s\d+\s*d\d+\s*$", "", label, flags=re.I)
 label = re.sub(r"\s*(disc\s*\d+|d\d+|s\d+|season\s*\d+|dvd video|dvd)\s*$", "", label, flags=re.I)
 print(label.strip(" -"))
-' "$1"
-}
-
-season_number_from_disc_label() {
-  python3 -c '
-import re
-import sys
-
-label = sys.argv[1].replace("_", " ")
-match = re.search(r"(?:season|s)\s*0*(\d+)", label, flags=re.I)
-print(match.group(1) if match else "")
 ' "$1"
 }
 
@@ -321,151 +181,6 @@ for item in payload.get("results", []):
 ' "$1"
 }
 
-search_itunes_tv_seasons() {
-  python3 -c '
-import json
-import re
-import sys
-import urllib.parse
-import urllib.request
-
-query = sys.argv[1]
-if not query:
-    raise SystemExit(0)
-url = "https://itunes.apple.com/search?" + urllib.parse.urlencode(
-    {
-        "term": query,
-        "media": "tvShow",
-        "entity": "tvSeason",
-        "limit": "8",
-        "country": "us",
-    }
-)
-with urllib.request.urlopen(url, timeout=20) as response:
-    payload = json.load(response)
-
-seen = set()
-for item in payload.get("results", []):
-    show_name = item.get("artistName") or ""
-    collection_name = item.get("collectionName") or ""
-    collection_id = item.get("collectionId") or ""
-    year = (item.get("releaseDate") or "")[:4]
-    season_match = re.search(r"season\s+(\d+)", collection_name, flags=re.I)
-    season_number = season_match.group(1) if season_match else ""
-    if not show_name or not collection_id:
-        continue
-    key = (show_name, collection_name)
-    if key in seen:
-        continue
-    seen.add(key)
-    print(f"{collection_id}\t{show_name}\t{season_number}\t{collection_name}\t{year}")
-' "$1"
-}
-
-list_itunes_episodes() {
-  local collection_id="$1"
-  if [[ -z "$collection_id" ]]; then
-    return
-  fi
-  python3 -c '
-import json
-import sys
-import urllib.parse
-import urllib.request
-
-collection_id = sys.argv[1]
-url = "https://itunes.apple.com/lookup?" + urllib.parse.urlencode(
-    {"id": collection_id, "entity": "tvEpisode", "limit": "200"}
-)
-with urllib.request.urlopen(url, timeout=20) as response:
-    payload = json.load(response)
-
-for item in payload.get("results", []):
-    if item.get("kind") != "tv-episode":
-        continue
-    number = item.get("trackNumber")
-    name = item.get("trackName") or ""
-    millis = item.get("trackTimeMillis") or 0
-    if not number or not name:
-        continue
-    seconds = int(millis) // 1000 if millis else 0
-    print(f"{number}\t{seconds}\t{name}")
-' "$collection_id"
-}
-
-list_makemkv_titles() {
-  python3 -c '
-import re
-import sys
-
-text = sys.stdin.read()
-durations = {}
-for line in text.splitlines():
-    match = re.match(r"^TINFO:(\d+),(\d+),\d+,\"(.*)\"\s*$", line)
-    if not match:
-        continue
-    title_id = int(match.group(1))
-    attribute = int(match.group(2))
-    value = match.group(3)
-    if attribute != 9:
-        continue
-    parts = [int(piece) for piece in value.split(":")]
-    seconds = 0
-    for part in parts:
-        seconds = seconds * 60 + part
-    durations[title_id] = seconds
-for title_id in sorted(durations):
-    print(f"{title_id}\t{durations[title_id]}")
-'
-}
-
-# One row per title: id, seconds, duration, bytes, source playlist, main-feature
-# flag, name. When MakeMKV's Java playlist detection works it comments the real
-# feature with FPL_MainFeature, which beats any size or length guess.
-makemkv_title_table() {
-  python3 -c '
-import re
-import sys
-
-titles = {}
-for line in sys.stdin.read().splitlines():
-    match = re.match(r"^TINFO:(\d+),(\d+),\d+,\"(.*)\"\s*$", line)
-    if not match:
-        continue
-    title_id = int(match.group(1))
-    attribute = int(match.group(2))
-    value = match.group(3)
-    title = titles.setdefault(title_id, {"main": False, "values": {}})
-    title["values"][attribute] = value
-    if "mainfeature" in value.replace("_", "").lower():
-        title["main"] = True
-
-
-def duration_seconds(text):
-    try:
-        parts = [int(piece) for piece in text.split(":")]
-    except ValueError:
-        return 0
-    seconds = 0
-    for part in parts:
-        seconds = seconds * 60 + part
-    return seconds
-
-
-for title_id in sorted(titles):
-    values = titles[title_id]["values"]
-    duration = values.get(9, "")
-    source = values.get(16, "")
-    name = values.get(27, "") or values.get(2, "")
-    try:
-        size_bytes = int(values.get(11, "0"))
-    except ValueError:
-        size_bytes = 0
-    flag = "main" if titles[title_id]["main"] else "-"
-    print(f"{title_id}\t{duration_seconds(duration)}\t{duration}\t{size_bytes}\t{source}\t{flag}\t{name}")
-'
-}
-
 print_title_table() {
   local disc_info
   disc_info="$(scan_disc_info)"
@@ -477,15 +192,6 @@ print_title_table() {
           "$title_id" "$duration" "$(human_gigabytes "$size_bytes")" "$source" "$flag" "$name"
       done
   printf '\nRip one of these with: ./rip-dvd.sh --title N\n'
-}
-
-human_gigabytes() {
-  local bytes="$1"
-  if [[ ! "$bytes" =~ ^[0-9]+$ || "$bytes" -eq 0 ]]; then
-    printf '?'
-    return
-  fi
-  awk -v bytes="$bytes" 'BEGIN { printf "%.1f GB", bytes / 1073741824 }'
 }
 
 # Prefer MakeMKV's main-feature flag, then the longest title. Length beats file
@@ -510,79 +216,6 @@ flagged = [row for row in rows if row[2] == "main"]
 pool = flagged if flagged else rows
 print(max(pool, key=lambda row: row[1])[0])
 '
-}
-
-select_tv_title_ids() {
-  local min_seconds="$1"
-  python3 -c '
-import statistics
-import sys
-
-min_seconds = int(sys.argv[1])
-rows = []
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    title_id, seconds = line.split("\t")
-    seconds = int(seconds)
-    if seconds >= min_seconds:
-        rows.append((int(title_id), seconds))
-
-if not rows:
-    raise SystemExit(0)
-
-typical_pool = [seconds for _, seconds in rows if seconds <= 55 * 60]
-if len(typical_pool) >= 2:
-    typical_seconds = statistics.median(typical_pool)
-else:
-    typical_seconds = statistics.median([seconds for _, seconds in rows])
-
-# Keep regular episodes and double-length pilots. Drop "Play All" bundles.
-limit_seconds = typical_seconds * 2.5
-for title_id, seconds in rows:
-    if seconds <= limit_seconds:
-        print(f"{title_id}\t{seconds}")
-' "$min_seconds"
-}
-
-assign_episode_names_by_runtime() {
-  python3 -c '
-import sys
-
-title_count = int(sys.argv[1])
-starting_episode = int(sys.argv[2])
-title_seconds = [int(value) for value in sys.argv[3:3 + title_count]]
-episode_blob = sys.argv[3 + title_count] if len(sys.argv) > 3 + title_count else ""
-
-episodes = []
-for line in episode_blob.split("\n"):
-    line = line.strip()
-    if not line:
-        continue
-    number, seconds, name = line.split("\t", 2)
-    episodes.append({"number": int(number), "seconds": int(seconds), "name": name, "is_used": False})
-
-def closest_unused_name(runtime):
-    best = None
-    best_delta = None
-    for episode in episodes:
-        if episode["is_used"] or episode["seconds"] <= 0:
-            continue
-        delta = abs(episode["seconds"] - runtime) / runtime
-        if best_delta is None or delta < best_delta:
-            best = episode
-            best_delta = delta
-    if best is None or best_delta > 0.3:
-        return ""
-    best["is_used"] = True
-    return best["name"]
-
-for index, runtime in enumerate(title_seconds):
-    episode_number = starting_episode + index
-    name = closest_unused_name(runtime) if runtime else ""
-    print(f"{episode_number}\t{name}")
-' "$@"
 }
 
 apply_lookup_choice() {
@@ -669,143 +302,6 @@ lookup_title_and_year() {
   print_line "Using ${MOVIE_TITLE}${MOVIE_YEAR:+ (${MOVIE_YEAR})}"
 }
 
-apply_tv_season_choice() {
-  local choice="$1"
-  local -a rows=("${@:2}")
-  local selected=""
-  local collection_id
-  local show_name
-  local season_from_match
-
-  if [[ "$choice" =~ ^[0-9]+$ ]]; then
-    local index=$((choice - 1))
-    if [[ "$index" -lt 0 || "$index" -ge "${#rows[@]}" ]]; then
-      print_error "Not a listed number: ${choice}"
-      exit 1
-    fi
-    selected="${rows[$index]}"
-    IFS=$'\t' read -r collection_id show_name season_from_match _ <<< "$selected"
-    SHOW_NAME="$show_name"
-    ITUNES_COLLECTION_ID="$collection_id"
-    if [[ -z "$SEASON_NUMBER" && -n "$season_from_match" ]]; then
-      SEASON_NUMBER="$season_from_match"
-    fi
-    return
-  fi
-
-  SHOW_NAME="$choice"
-}
-
-lookup_tv_show_and_season() {
-  local disc_label
-  local search_query
-  local matches
-  local -a rows=()
-  local index=1
-  local choice=""
-  local guessed_season=""
-
-  print_step "Looking up TV show from the disc label"
-  disc_label="$(read_disc_label)"
-  if [[ -z "$disc_label" ]]; then
-    print_error "MakeMKV did not report a disc name. Is a disc in the USB drive?"
-    exit 1
-  fi
-
-  search_query="$(search_query_from_disc_label "$disc_label")"
-  guessed_season="$(season_number_from_disc_label "$disc_label")"
-  print_line "Disc label: ${disc_label}"
-  print_line "Search:     ${search_query}"
-
-  matches="$(search_itunes_tv_seasons "$search_query" || true)"
-  if [[ -n "$matches" ]]; then
-    print_line "Matches:"
-    while IFS=$'\t' read -r collection_id show_name season_from_match collection_name year; do
-      print_line "  ${index}. ${collection_name}${year:+ (${year})}"
-      rows+=("${collection_id}"$'\t'"${show_name}"$'\t'"${season_from_match}"$'\t'"${collection_name}")
-      index=$((index + 1))
-    done <<< "$matches"
-  else
-    print_line "No iTunes TV match for that label."
-  fi
-
-  if [[ "$is_accepting_first_lookup" -eq 1 ]]; then
-    if [[ "${#rows[@]}" -eq 0 ]]; then
-      print_error "Lookup found nothing. Re-run with: ./rip-dvd.sh --tv \"Show Name\" --season 1"
-      exit 1
-    fi
-    apply_tv_season_choice "1" "${rows[@]}"
-  elif [[ "${#rows[@]}" -gt 0 ]]; then
-    read -r -p "Number, or type show name: " choice </dev/tty
-    choice="${choice:-1}"
-    apply_tv_season_choice "$choice" "${rows[@]}"
-  else
-    read -r -p "Show name: " SHOW_NAME </dev/tty
-  fi
-
-  if [[ -z "$SHOW_NAME" ]]; then
-    print_error "Need a show name to name the Plex folder."
-    exit 1
-  fi
-
-  if [[ -z "$SEASON_NUMBER" && -n "$guessed_season" ]]; then
-    SEASON_NUMBER="$guessed_season"
-    print_line "Season from disc label: ${SEASON_NUMBER}"
-  fi
-
-  if [[ -z "$SEASON_NUMBER" ]]; then
-    if [[ "$is_accepting_first_lookup" -eq 1 ]]; then
-      print_error "Need --season N for unattended TV rips when the match has no season."
-      exit 1
-    fi
-    read -r -p "Season number: " SEASON_NUMBER </dev/tty
-  fi
-
-  if [[ -z "$SEASON_NUMBER" || ! "$SEASON_NUMBER" =~ ^[0-9]+$ ]]; then
-    print_error "Need a numeric season."
-    exit 1
-  fi
-
-  if [[ -z "$STARTING_EPISODE" ]]; then
-    STARTING_EPISODE=1
-    print_line "Numbering this disc from e01. Pass --episode N if it is a later disc in the season."
-  fi
-
-  if [[ ! "$STARTING_EPISODE" =~ ^[0-9]+$ ]]; then
-    print_error "Need a numeric starting episode."
-    exit 1
-  fi
-
-  print_line "Using ${SHOW_NAME}  s$(padded_two_digits "$SEASON_NUMBER")e$(padded_two_digits "$STARTING_EPISODE")+"
-}
-
-prompt_tv_season_if_needed() {
-  local disc_label
-  disc_label="$(read_disc_label || true)"
-  if [[ -z "$SEASON_NUMBER" && -n "$disc_label" ]]; then
-    SEASON_NUMBER="$(season_number_from_disc_label "$disc_label")"
-  fi
-  if [[ -z "$SEASON_NUMBER" ]]; then
-    if [[ "$is_accepting_first_lookup" -eq 1 ]]; then
-      print_error "Need --season N when using --yes with a show name."
-      exit 1
-    fi
-    read -r -p "Season number: " SEASON_NUMBER </dev/tty
-  fi
-  if [[ -z "$SEASON_NUMBER" || ! "$SEASON_NUMBER" =~ ^[0-9]+$ ]]; then
-    print_error "Need a numeric season. Pass --season N."
-    exit 1
-  fi
-  if [[ -z "$STARTING_EPISODE" ]]; then
-    STARTING_EPISODE=1
-    print_line "Numbering this disc from e01. Pass --episode N if it is a later disc in the season."
-  fi
-  if [[ ! "$STARTING_EPISODE" =~ ^[0-9]+$ ]]; then
-    print_error "Need a numeric starting episode."
-    exit 1
-  fi
-}
-
 largest_file_in_directory() {
   local directory="$1"
   local largest_path=""
@@ -822,11 +318,6 @@ largest_file_in_directory() {
   done < <(find "$directory" -type f -name '*.mkv' -print0)
 
   printf '%s' "$largest_path"
-}
-
-mkv_files_in_disc_order() {
-  local directory="$1"
-  find "$directory" -type f -name '*.mkv' | LC_ALL=C sort -V
 }
 
 rip_single_title() {
@@ -852,50 +343,6 @@ title_is_flagged_main() {
   local wanted_id="$2"
   makemkv_title_table <<< "$disc_info" \
     | awk -F'\t' -v wanted="$wanted_id" '$1 == wanted && $6 == "main" { found = 1 } END { exit !found }'
-}
-
-copy_title() {
-  local raw_mkv="$1"
-  local output_file="$2"
-  mkdir -p "$(dirname "$output_file")"
-  cp "$raw_mkv" "$output_file"
-}
-
-convert_title() {
-  local raw_mkv="$1"
-  local output_file="$2"
-  local handbrake
-  local handbrake_status
-  handbrake="$(handbrake_command)"
-
-  mkdir -p "$(dirname "$output_file")"
-  set +e
-  "$handbrake" \
-    --input "$raw_mkv" \
-    --output "$output_file" \
-    --preset "$HANDBRAKE_PRESET" \
-    --format av_mp4 \
-    "$HANDBRAKE_RATE_FLAG" \
-    --optimize
-  handbrake_status=$?
-  set -e
-  # HandBrakeCLI uses 1 for "finished with warnings". That is still a usable file.
-  if [[ "$handbrake_status" -gt 1 ]]; then
-    print_error "HandBrake failed (exit ${handbrake_status}) on ${raw_mkv}"
-    exit 1
-  fi
-}
-
-plex_tv_file_name() {
-  local show_name="$1"
-  local season_padded="$2"
-  local episode_padded="$3"
-  local episode_title="$4"
-  if [[ -n "$episode_title" ]]; then
-    printf '%s - s%se%s - %s' "$show_name" "$season_padded" "$episode_padded" "$episode_title"
-    return
-  fi
-  printf '%s - s%se%s' "$show_name" "$season_padded" "$episode_padded"
 }
 
 rip_movie() {
@@ -958,30 +405,6 @@ rip_movie() {
 
   print_line ""
   print_line "Done: ${output_file}"
-}
-
-duration_for_file_name() {
-  awk -F: '{
-    if (NF == 3 && $1 + 0 > 0) { printf "%dh%02dm%02ds", $1, $2, $3 }
-    else if (NF == 3) { printf "%dm%02ds", $2, $3 }
-    else if (NF == 2) { printf "%dm%02ds", $1, $2 }
-    else { printf "%s", $0 }
-  }' <<< "$1"
-}
-
-# Walk up to the nearest directory that exists. Trimming with ${path%/*} always
-# shortens the string, so this cannot spin the way a dirname call can.
-free_gigabytes_at() {
-  local path="$1"
-  local parent
-  while [[ ! -d "$path" ]]; do
-    parent="${path%/*}"
-    if [[ -z "$parent" || "$parent" == "$path" ]]; then
-      parent="/"
-    fi
-    path="$parent"
-  done
-  df -k "$path" | awk 'NR == 2 { printf "%.1f", $4 / 1048576 }'
 }
 
 all_titles_destination() {
@@ -1098,148 +521,8 @@ rip_all_titles() {
   print_line "  mv the file into ~/Media/Movies/Movie Title (Year)/ as-is"
 }
 
-fill_itunes_collection_id_if_needed() {
-  local matches
-  local collection_id
-  local show_name
-  local season_from_match
-  if [[ -n "$ITUNES_COLLECTION_ID" ]]; then
-    return
-  fi
-  matches="$(search_itunes_tv_seasons "$SHOW_NAME" || true)"
-  [[ -n "$matches" ]] || return
-  while IFS=$'\t' read -r collection_id show_name season_from_match _ _; do
-    if [[ "$season_from_match" == "$SEASON_NUMBER" ]]; then
-      ITUNES_COLLECTION_ID="$collection_id"
-      return
-    fi
-  done <<< "$matches"
-}
-
-rip_tv() {
-  local show_name
-  local season_padded
-  local raw_directory
-  local output_directory
-  local output_extension="mp4"
-  local disc_info
-  local all_titles
-  local selected_rows
-  local title_id
-  local title_seconds
-  local -a title_ids=()
-  local -a title_runtimes=()
-  local -a ripped_files=()
-  local files_before
-  local raw_mkv
-  local itunes_episodes
-  local assignments
-  local episode_number
-  local episode_title
-  local episode_padded
-  local file_stem
-  local output_file
-  local index=0
-  local file_count
-
-  show_name="$(sanitize_file_component "$SHOW_NAME")"
-  season_padded="$(padded_two_digits "$SEASON_NUMBER")"
-  raw_directory="${RIPS_DIRECTORY}/raw/${show_name}/Season ${season_padded}"
-  output_directory="${TV_DIRECTORY}/${show_name}/Season ${season_padded}"
-  if [[ "$is_copying_without_encode" -eq 1 ]]; then
-    output_extension="mkv"
-  fi
-
-  print_step "Scanning the disc for episode-length titles"
-  disc_info="$(scan_disc_info)"
-  all_titles="$(list_makemkv_titles <<< "$disc_info")"
-  selected_rows="$(select_tv_title_ids "$MINIMUM_TITLE_LENGTH_SECONDS" <<< "$all_titles")"
-  if [[ -z "$selected_rows" ]]; then
-    print_error "No titles were at least ${MINIMUM_TITLE_LENGTH_SECONDS}s. Try a lower --min-length."
-    exit 1
-  fi
-
-  print_line "Keeping these MakeMKV titles (Play All / shorts dropped):"
-  while IFS=$'\t' read -r title_id title_seconds; do
-    [[ -n "$title_id" ]] || continue
-    title_ids+=("$title_id")
-    title_runtimes+=("$title_seconds")
-    print_line "  title ${title_id}  $(printf '%d:%02d' $((title_seconds / 60)) $((title_seconds % 60)))"
-  done <<< "$selected_rows"
-
-  file_count="${#title_ids[@]}"
-  print_line "Numbering ${file_count} episode(s) from s${season_padded}e$(padded_two_digits "$STARTING_EPISODE") in disc order."
-  print_line "Names are matched by runtime (so Firefly's two-hour Serenity does not steal Train Job's number)."
-
-  mkdir -p "$raw_directory"
-  for title_id in "${title_ids[@]}"; do
-    print_line "MakeMKV title ${title_id}"
-    files_before="$(mkv_files_in_disc_order "$raw_directory")"
-    "$MAKE_MKV_COMMAND" --minlength=1 -r --decrypt mkv disc:0 "$title_id" "$raw_directory"
-    raw_mkv=""
-    if [[ -z "$files_before" ]]; then
-      IFS= read -r raw_mkv < <(mkv_files_in_disc_order "$raw_directory") || true
-    else
-      IFS= read -r raw_mkv < <(comm -13 <(printf '%s\n' "$files_before") <(mkv_files_in_disc_order "$raw_directory")) || true
-    fi
-    if [[ -z "$raw_mkv" ]]; then
-      print_error "MakeMKV did not create a new file for title ${title_id}."
-      exit 1
-    fi
-    ripped_files+=("$raw_mkv")
-  done
-
-  if [[ "${#ripped_files[@]}" -ne "$file_count" ]]; then
-    print_line "Warning: expected ${file_count} files, found ${#ripped_files[@]}. Using disc order of new files."
-    if [[ "${#ripped_files[@]}" -eq 0 ]]; then
-      print_error "MakeMKV did not produce episode .mkv files."
-      exit 1
-    fi
-  fi
-
-  itunes_episodes="$(list_itunes_episodes "$ITUNES_COLLECTION_ID" || true)"
-  assignments="$(assign_episode_names_by_runtime "$file_count" "$STARTING_EPISODE" "${title_runtimes[@]}" "${itunes_episodes}")"
-
-  print_step "Converting ${#ripped_files[@]} episode(s) with ${HANDBRAKE_PRESET}"
-  index=0
-  while IFS=$'\t' read -r episode_number episode_title; do
-    raw_mkv="${ripped_files[$index]}"
-    episode_padded="$(padded_two_digits "$episode_number")"
-    if [[ -n "$episode_title" ]]; then
-      episode_title="$(sanitize_file_component "$episode_title")"
-    fi
-    file_stem="$(plex_tv_file_name "$show_name" "$season_padded" "$episode_padded" "$episode_title")"
-    output_file="${output_directory}/${file_stem}.${output_extension}"
-    print_line "s${season_padded}e${episode_padded}${episode_title:+ ${episode_title}}: ${raw_mkv}"
-    if [[ -e "$output_file" ]]; then
-      print_line "Already exists, skipping: ${output_file}"
-      index=$((index + 1))
-      continue
-    fi
-    if [[ "$is_copying_without_encode" -eq 1 ]]; then
-      copy_title "$raw_mkv" "$output_file"
-    else
-      convert_title "$raw_mkv" "$output_file"
-    fi
-    index=$((index + 1))
-  done <<< "$assignments"
-
-  if [[ "$is_keeping_raw_rip" -eq 0 ]]; then
-    print_step "Removing the raw MakeMKV files (pass --keep-raw to keep them)"
-    rm -rf "$raw_directory"
-  fi
-
-  print_line ""
-  print_line "Done: ${output_directory}"
-  print_line "Plex often uses aired order for Firefly. If names look right but Plex shows The Train Job first, set the show's episode order to DVD."
-}
-
 require_macos
 require_not_root
-
-if [[ "$is_ripping_tv" -eq 1 && "$is_min_length_explicit" -eq 0 ]]; then
-  MINIMUM_TITLE_LENGTH_SECONDS="$TV_MINIMUM_TITLE_LENGTH_SECONDS"
-fi
 
 if [[ ! -x "$MAKE_MKV_COMMAND" ]]; then
   print_error "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
@@ -1266,20 +549,9 @@ if [[ "$is_copying_without_encode" -eq 0 ]]; then
   choose_handbrake_preset
 fi
 
-if [[ "$is_ripping_tv" -eq 1 ]]; then
-  if [[ -n "$MOVIE_TITLE" ]]; then
-    SHOW_NAME="$MOVIE_TITLE"
-    prompt_tv_season_if_needed
-  else
-    lookup_tv_show_and_season
-  fi
-  fill_itunes_collection_id_if_needed
-  rip_tv
-else
-  if [[ -z "$MOVIE_TITLE" ]]; then
-    lookup_title_and_year
-  fi
-  rip_movie
+if [[ -z "$MOVIE_TITLE" ]]; then
+  lookup_title_and_year
 fi
+rip_movie
 
 print_line "Plex should pick it up on the next library scan. If not: library → More → Scan Library Files."
