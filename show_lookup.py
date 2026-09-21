@@ -322,9 +322,14 @@ class DiscKind:
             score += 2
             reasons.append("two titles run to almost exactly the same length")
 
-        if season_from_disc_label(self.label) or disc_number_from_label(self.label):
+        if season_from_disc_label(self.label):
             score += 2
-            reasons.append(f'the label "{self.label}" carries season or disc numbering')
+            reasons.append(f'the label "{self.label}" carries a season number')
+        elif disc_number_from_label(self.label):
+            # Weak on its own. Plenty of films ship as KNIVES_OUT_FEATURE_DISC1,
+            # so this should colour the answer without driving it.
+            score += 1
+            reasons.append(f'the label "{self.label}" carries a disc number')
 
         return score, ", and ".join(reasons)
 

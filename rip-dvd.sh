@@ -2,12 +2,18 @@
 # Rip an owned DVD or Blu-ray from the USB drive, convert to H.264, file for Plex.
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIRECTORY}/common.sh"
+
+MOVIE_LOOKUP_COMMAND="${SCRIPT_DIRECTORY}/movie_lookup.py"
 
 MINIMUM_TITLE_LENGTH_SECONDS=300
 is_keeping_raw_rip=0
 is_copying_without_encode=0
-is_accepting_first_lookup=0
+# Ripping a disc is a walk-away job, so the lookup takes its own best match
+# rather than waiting at a prompt nobody is sitting in front of. --ask opts back
+# into being consulted.
+is_asking_before_choices=0
 is_min_length_explicit=0
 is_listing_titles=0
 is_ripping_all_titles=0
@@ -30,7 +36,7 @@ Movies keep the title MakeMKV flags as the main feature, or the longest one if
 nothing is flagged, and file it as:
   ${MOVIES_DIRECTORY}/Movie Title (Year)/Movie Title (Year).mp4
 
-If you omit the name, the script reads the disc label and looks it up in iTunes.
+If you omit the name, the script reads the disc label and looks it up on Wikidata.
 
   --min-length SECONDS   Ignore shorter titles (default: ${MINIMUM_TITLE_LENGTH_SECONDS})
   --list                 Print the titles on the disc and stop. Use this when the
@@ -47,7 +53,9 @@ If you omit the name, the script reads the disc label and looks it up in iTunes.
                          default. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake. Copy decrypted MPEG-2 as .mkv
-  --yes                  Use the first lookup match without asking
+  --ask                  Stop and confirm the title instead of taking the best
+                         match. Without this the rip runs unattended.
+  --no-eject             Leave the disc in the drive when it finishes
   -h, --help             Show this help
 
 Only rip discs you own.
@@ -125,8 +133,17 @@ while [[ $# -gt 0 ]]; do
       is_copying_without_encode=1
       shift
       ;;
+    --ask)
+      is_asking_before_choices=1
+      shift
+      ;;
+    --no-eject)
+      is_ejecting_when_done=0
+      shift
+      ;;
     --yes)
-      is_accepting_first_lookup=1
+      # Taking the first match is the default now. Accepted so older commands
+      # and notes keep working.
       shift
       ;;
     -h | --help)
@@ -161,55 +178,6 @@ plex_movie_folder_name() {
   printf '%s' "$MOVIE_TITLE"
 }
 
-
-search_query_from_disc_label() {
-  python3 -c '
-import re
-import sys
-
-label = sys.argv[1].replace("_", " ")
-label = re.sub(r"\s+", " ", label).strip()
-label = re.sub(r"[\s]+s\d+\s*d\d+\s*$", "", label, flags=re.I)
-label = re.sub(r"\s*(disc\s*\d+|d\d+|s\d+|season\s*\d+|dvd video|dvd)\s*$", "", label, flags=re.I)
-print(label.strip(" -"))
-' "$1"
-}
-
-search_itunes_movies() {
-  python3 -c '
-import json
-import sys
-import urllib.parse
-import urllib.request
-
-query = sys.argv[1]
-if not query:
-    raise SystemExit(0)
-url = "https://itunes.apple.com/search?" + urllib.parse.urlencode(
-    {
-        "term": query,
-        "media": "movie",
-        "entity": "movie",
-        "limit": "8",
-        "country": "us",
-    }
-)
-with urllib.request.urlopen(url, timeout=20) as response:
-    payload = json.load(response)
-
-seen = set()
-for item in payload.get("results", []):
-    name = item.get("trackName") or item.get("collectionName") or ""
-    year = (item.get("releaseDate") or "")[:4]
-    if not name or not year.isdigit():
-        continue
-    key = (name, year)
-    if key in seen:
-        continue
-    seen.add(key)
-    print(f"{name}\t{year}")
-' "$1"
-}
 
 print_title_table() {
   local disc_info
@@ -289,11 +257,11 @@ lookup_title_and_year() {
     exit 1
   fi
 
-  search_query="$(search_query_from_disc_label "$disc_label")"
+  search_query="$("$MOVIE_LOOKUP_COMMAND" label --label "$disc_label")"
   print_line "Disc label: ${disc_label}"
   print_line "Search:     ${search_query}"
 
-  matches="$(search_itunes_movies "$search_query" || true)"
+  matches="$("$MOVIE_LOOKUP_COMMAND" search --query "$search_query" --limit 8 || true)"
   if [[ -n "$matches" ]]; then
     print_line "Matches:"
     while IFS=$'\t' read -r name year; do
@@ -302,16 +270,18 @@ lookup_title_and_year() {
       index=$((index + 1))
     done <<< "$matches"
   else
-    print_line "No iTunes movie match for that label."
+    print_line "Nothing on Wikidata matched that label."
   fi
 
-  if [[ "$is_accepting_first_lookup" -eq 1 ]]; then
+  if [[ "$is_asking_before_choices" -eq 0 ]]; then
     if [[ "${#titles[@]}" -eq 0 ]]; then
-      print_error "Lookup found nothing. Re-run with: ./rip-dvd.sh \"Movie Title\" 1999"
+      print_error "Lookup found nothing for \"${search_query}\"."
+      print_line "Name it yourself:  ./rip-dvd.sh \"Movie Title\" 1999"
+      print_line "Or pick from a search:  ./rip-dvd.sh --ask"
       exit 1
     fi
     apply_lookup_choice "1" "${titles[@]}"
-    print_line "Using ${MOVIE_TITLE} (${MOVIE_YEAR})"
+    print_line "Using ${MOVIE_TITLE} (${MOVIE_YEAR}). Pass --ask to choose yourself."
     return
   fi
 
@@ -364,8 +334,16 @@ rip_single_title() {
 describe_title() {
   local disc_info="$1"
   local wanted_id="$2"
+  # Source and name are often blank, especially on DVDs, so skip the ones that
+  # would just leave dangling commas.
   makemkv_title_table <<< "$disc_info" \
-    | awk -F'\t' -v wanted="$wanted_id" '$1 == wanted { printf "%s, %s, %s", $3, $5, $7 }'
+    | awk -F'\t' -v wanted="$wanted_id" '
+        $1 == wanted {
+          description = $3
+          if ($5 != "") { description = description ", " $5 }
+          if ($7 != "") { description = description ", " $7 }
+          print description
+        }'
 }
 
 title_is_flagged_main() {
@@ -491,7 +469,18 @@ rip_all_titles() {
   print_line "Needs about $(human_gigabytes "$total_bytes"), and $(free_gigabytes_at "$destination") GB is free."
   print_line "Titles under ${MINIMUM_TITLE_LENGTH_SECONDS}s are skipped. Change that with --min-length."
 
-  if [[ "$is_accepting_first_lookup" -eq 0 ]]; then
+  # Nobody is watching this run, so refuse outright rather than filling the disk
+  # and failing partway through.
+  local needed_gigabytes free_gigabytes
+  needed_gigabytes="$(awk -v bytes="$total_bytes" 'BEGIN { printf "%.0f", bytes / 1073741824 }')"
+  free_gigabytes="$(free_gigabytes_at "$destination")"
+  if [[ "$free_gigabytes" -lt "$needed_gigabytes" ]]; then
+    print_error "Not enough room: needs about ${needed_gigabytes} GB, only ${free_gigabytes} GB free."
+    print_line "Free some space, or move the library to a USB drive with ./move-library-to-usb.sh"
+    exit 1
+  fi
+
+  if [[ "$is_asking_before_choices" -eq 1 ]]; then
     local answer
     read -r -p "Continue? [y/N] " answer </dev/tty
     if [[ ! "$answer" =~ ^[Yy] ]]; then
@@ -584,5 +573,6 @@ if [[ -z "$MOVIE_TITLE" ]]; then
   lookup_title_and_year
 fi
 rip_movie
+eject_disc
 
 print_line "Plex should pick it up on the next library scan. If not: library → More → Scan Library Files."

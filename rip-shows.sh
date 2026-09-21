@@ -15,7 +15,10 @@ STARTING_EPISODE=""
 EPISODE_ORDER="auto"
 MINIMUM_EPISODE_SECONDS=900
 is_listing_only=0
-is_accepting_every_guess=0
+# Ripping a disc is a walk-away job, so every guess stands on its own unless
+# --ask says otherwise. The one thing it will not do is invent a show or season
+# it could not work out; that stops with an error instead.
+is_asking_before_choices=0
 is_keeping_raw_rip=0
 is_copying_without_encode=0
 
@@ -54,7 +57,10 @@ Nothing is ripped until you have seen the episode list and agreed to it.
                          default. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake and keep the decrypted .mkv
-  --yes                  Accept every guess without asking
+  --ask                  Stop and confirm each guess, and the episode plan,
+                         instead of just going. Without this the rip runs
+                         unattended.
+  --no-eject             Leave the disc in the drive when it finishes
   -h, --help             Show this help
 
 Only rip discs you own.
@@ -147,8 +153,17 @@ while [[ $# -gt 0 ]]; do
       is_copying_without_encode=1
       shift
       ;;
+    --ask)
+      is_asking_before_choices=1
+      shift
+      ;;
+    --no-eject)
+      is_ejecting_when_done=0
+      shift
+      ;;
     --yes)
-      is_accepting_every_guess=1
+      # Accepting every guess is the default now. Accepted so older commands and
+      # notes keep working.
       shift
       ;;
     -h|--help)
@@ -186,7 +201,7 @@ choose_show_from_search() {
   fi
 
   match_count="$(wc -l <<< "$matches" | tr -d ' ')"
-  if [[ "$match_count" -eq 1 || "$is_accepting_every_guess" -eq 1 ]]; then
+  if [[ "$match_count" -eq 1 || "$is_asking_before_choices" -eq 0 ]]; then
     SHOW_ID="$(head -1 <<< "$matches" | cut -f1)"
     SHOW_NAME="$(head -1 <<< "$matches" | cut -f2)"
     print_line "Show: ${SHOW_NAME}"
@@ -232,8 +247,10 @@ identify_show() {
     print_line "The disc label (\"${DISC_LABEL}\") says nothing useful about the show."
   fi
 
-  if [[ "$is_accepting_every_guess" -eq 1 ]]; then
-    print_error "Cannot identify the disc on its own. Re-run with --show \"Show Name\"."
+  if [[ "$is_asking_before_choices" -eq 0 ]]; then
+    print_error "Cannot work out which show this disc is."
+    print_line "Name it:      ./rip-shows.sh --show \"Show Name\""
+    print_line "Or search:    ./rip-shows.sh --ask"
     exit 1
   fi
 
@@ -278,8 +295,10 @@ identify_season() {
     done <<< "$seasons"
   fi
 
-  if [[ "$is_accepting_every_guess" -eq 1 ]]; then
-    print_error "Cannot tell which season this disc is. Re-run with --season N."
+  if [[ "$is_asking_before_choices" -eq 0 ]]; then
+    print_error "Cannot tell which season this disc is."
+    print_line "Say so:    ./rip-shows.sh --season N"
+    print_line "Or pick:   ./rip-shows.sh --ask"
     exit 1
   fi
 
@@ -389,12 +408,19 @@ print_plan() {
     print_line "Confident: ${note}."
   else
     print_line "NOT confident: ${note}."
-    print_line "Check the names above. If the disc starts somewhere else, re-run with --episode N."
+    if [[ "$is_asking_before_choices" -eq 0 ]]; then
+      # Going ahead regardless: renaming afterwards is cheap, and a wrong name
+      # is easier to spot in the library than a disc that never got ripped.
+      print_line "Ripping anyway. Check the names above afterwards, and if the disc"
+      print_line "starts somewhere else re-run with --episode N. Use --ask to be consulted."
+    else
+      print_line "Check the names above. If the disc starts somewhere else, use --episode N."
+    fi
   fi
 }
 
 confirm_plan() {
-  if [[ "$is_accepting_every_guess" -eq 1 ]]; then
+  if [[ "$is_asking_before_choices" -eq 0 ]]; then
     return
   fi
 
@@ -550,3 +576,4 @@ fi
 print_plan "$EPISODE_PLAN"
 confirm_plan
 rip_planned_episodes "$EPISODE_PLAN"
+eject_disc

@@ -169,6 +169,16 @@ SURROUND_COPY_MASK="aac,ac3,eac3,truehd,dts,dtshd,mp2,mp3,flac"
 # only duplicate frames on a 24fps film.
 HANDBRAKE_RATE_FLAG="--cfr"
 
+# Popping the disc out is how an unattended rip says it is finished, and it
+# frees the drive for the next one without anyone reading the scrollback.
+is_ejecting_when_done=1
+
+eject_disc() {
+  [[ "$is_ejecting_when_done" -eq 1 ]] || return 0
+  print_line "Ejecting the disc."
+  drutil eject >/dev/null 2>&1 || true
+}
+
 sanitize_file_component() {
   python3 -c '
 import re

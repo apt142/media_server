@@ -276,7 +276,16 @@ class DiscKindTests(unittest.TestCase):
         kind, _, reason = DiscKind(titles, "THE_WIRE_S02_D3").verdict()
 
         self.assertEqual(kind, "show")
-        self.assertIn("season or disc numbering", reason)
+        self.assertIn("season number", reason)
+
+    def test_a_disc_number_alone_does_not_outweigh_a_feature(self):
+        """Films ship as KNIVES_OUT_FEATURE_DISC1, so DISC1 is weak evidence."""
+        titles = [title(0, self.TWO_HOURS_TEN), title(1, 480)]
+
+        kind, is_confident, _ = DiscKind(titles, "KNIVES_OUT_FEATURE_DISC1").verdict()
+
+        self.assertEqual(kind, "film")
+        self.assertTrue(is_confident)
 
     def test_film_with_a_long_featurette_is_still_a_film(self):
         titles = [title(0, self.TWO_HOURS_TEN), title(1, 1800)]

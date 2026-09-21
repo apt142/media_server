@@ -245,15 +245,21 @@ Then, from another Mac, mount the share. On the Roku, open Plex and confirm the 
 
 ## Just rip whatever is in the drive
 
-If you do not want to think about which script to run:
+Put the disc in, run one command, walk away:
 
 ```bash
 ./rip.sh
 ```
 
+No flags, no questions. It identifies the disc, looks the title up, rips it, files it where Plex will find it, and ejects the disc when it is done. The ejected disc is the signal that it finished.
+
+Nothing prompts by default. Where it has to choose — which film the label refers to, which episode a title is — it takes its best answer and says what it picked, rather than waiting at a prompt nobody is sitting in front of. If you would rather be consulted, add `--ask`.
+
+There are two things it will not guess, because guessing would be worse than stopping: a film whose title it cannot find, and a TV disc whose show or season it cannot work out. Those stop with an error telling you the flag to add.
+
 It reads the disc, decides whether it holds a film or episodes of a show, and hands off to `rip-dvd.sh` or `rip-shows.sh`. Any other flags you pass go through to whichever it picks, so `./rip.sh --subtitle-langs eng` works the same either way.
 
-It decides from the shape of the disc rather than the label. A film disc has one dominant title surrounded by shorter extras; an episode disc has several titles of near-identical length, because episodes run to the same slot. Season or disc numbering on the label counts as further evidence. It tells you what it concluded and why:
+It decides from the shape of the disc rather than the label. A film disc has one dominant title surrounded by shorter extras; an episode disc has several titles of near-identical length, because episodes run to the same slot. A season number on the label counts as further evidence; a bare disc number counts for less, since plenty of films ship as `KNIVES_OUT_FEATURE_DISC1`. It tells you what it concluded and why:
 
 ```
 This looks like a TV disc: two titles run to almost exactly the same length,
@@ -319,7 +325,8 @@ Flags:
 - `--min-length 3600` — skip titles under an hour (trailers, extras).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
 - `--direct` — skip HandBrake and keep the DVD MPEG-2 stream as `.mkv`. Closest to the disc. Plex will transcode that for the Roku; 480p on an M1 is light.
-- `--yes` — take the first iTunes match without asking
+- `--ask` — confirm the title instead of taking the best match
+- `--no-eject` — leave the disc in the drive when it finishes
 
 If MakeMKV says the application is too old or the key is invalid, repeat section 2 with the current forum key.
 
@@ -389,6 +396,22 @@ Once you know which one you want, either encode it properly:
 ```
 
 or, if the raw file is good enough, move it into place yourself. Plex reads the folder name, so it needs to land as `~/Media/Movies/Knives Out (2019)/Knives Out (2019).mkv`. Delete the staging folder when you are done — it is large and Plex does not index it.
+
+---
+
+## Where the titles come from
+
+Film titles and years come from **Wikidata**, and TV shows and episodes from **TVmaze**. Neither needs an account or an API key, so nothing to set up.
+
+This used to use Apple's iTunes Search API for films. That endpoint still answers, and still returns HTTP 200, but as of 2026 it reports zero results for `media=movie` and `media=tvShow` while continuing to serve music — so the film lookup had quietly been finding nothing at all, every time. If you have folders named after disc labels rather than films, that is why.
+
+Wikidata is queried by the cleaned disc label. `KNIVES_OUT_FEATURE_DISC1` becomes a search for `KNIVES OUT`, and results are ranked by how closely they match, so the film wins over its sequels and over stage adaptations of it. You can always skip the lookup:
+
+```bash
+./rip-dvd.sh "Knives Out" 2019
+```
+
+It is a public wiki, so occasionally a disc will not match. When the lookup finds nothing the script stops and tells you to name the film yourself rather than filing it under the disc label.
 
 ---
 
@@ -546,19 +569,20 @@ Flags:
 - `--audio-langs eng,spa` / `--subtitle-langs eng` — extra tracks, forces MKV
 - `--direct` — skip HandBrake, keep the decrypted `.mkv`
 - `--keep-raw` — keep the MakeMKV files in `~/Media/Rips/raw`
-- `--yes` — accept every guess without asking. It refuses to invent a show or season it could not determine, so unattended runs usually want `--show` and `--season` too.
+- `--ask` — confirm each guess and the episode plan instead of just going
+- `--no-eject` — leave the disc in the drive when it finishes
 
 Then in Plex: **TV** library → **Scan Library Files**.
 
 ### Tests
 
-The episode-matching logic has unit tests. They stub out TVmaze, so they run offline in well under a second:
+The identification logic has unit tests. They stub out Wikidata and TVmaze, so they run offline in well under a second:
 
 ```bash
-python3 -m unittest test_show_lookup
+python3 -m unittest test_show_lookup test_movie_lookup
 ```
 
-Worth running if you change how discs are identified — they cover the Play All and duplicate-playlist filtering, the label parsing, and the confidence rules that decide whether an episode mapping can be trusted.
+Worth running if you change how discs are identified. They cover the Play All and duplicate-playlist filtering, disc label parsing, the confidence rules behind an episode mapping, whether a disc reads as a film or a show, and the film ranking that keeps a sequel or a stage adaptation from beating the film you actually put in the drive.
 
 ---
 
