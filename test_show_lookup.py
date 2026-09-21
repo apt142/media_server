@@ -11,6 +11,7 @@ import io
 import unittest
 
 from show_lookup import (
+    DiscKind,
     DiscTitles,
     EpisodeAlignment,
     clean_disc_label,
@@ -228,6 +229,68 @@ class EpisodeAlignmentTests(unittest.TestCase):
         _, is_confident, _ = EpisodeAlignment(self.UNIFORM_SEASON, []).best_start()
 
         self.assertFalse(is_confident)
+
+
+class DiscKindTests(unittest.TestCase):
+    """Telling a film disc from an episode disc, so rip.sh can hand off."""
+
+    FORTY_FOUR_MINUTES = 2640
+    FORTY_THREE_MINUTES = 2610
+    TWO_HOURS_TEN = 7832
+
+    def test_one_long_title_with_short_extras_is_a_film(self):
+        titles = [title(0, self.TWO_HOURS_TEN), title(1, 480), title(2, 300)]
+
+        kind, is_confident, _ = DiscKind(titles, "KNIVES_OUT").verdict()
+
+        self.assertEqual(kind, "film")
+        self.assertTrue(is_confident)
+
+    def test_several_equal_length_titles_are_episodes(self):
+        titles = [
+            title(0, self.FORTY_FOUR_MINUTES),
+            title(1, self.FORTY_THREE_MINUTES),
+            title(2, 2650),
+        ]
+
+        kind, is_confident, _ = DiscKind(titles, "LOGICAL_VOLUME_ID").verdict()
+
+        self.assertEqual(kind, "show")
+        self.assertTrue(is_confident)
+
+    def test_feature_length_pilot_beside_episodes_is_still_a_show(self):
+        """Firefly disc 1: a two-hour pilot next to two ordinary episodes."""
+        titles = [
+            title(0, 7320),
+            title(1, self.FORTY_FOUR_MINUTES),
+            title(2, self.FORTY_THREE_MINUTES),
+        ]
+
+        kind, _, _ = DiscKind(titles, "FIREFLY_D1").verdict()
+
+        self.assertEqual(kind, "show")
+
+    def test_season_numbering_on_the_label_counts_as_evidence(self):
+        titles = [title(0, self.FORTY_FOUR_MINUTES), title(1, 1500)]
+
+        kind, _, reason = DiscKind(titles, "THE_WIRE_S02_D3").verdict()
+
+        self.assertEqual(kind, "show")
+        self.assertIn("season or disc numbering", reason)
+
+    def test_film_with_a_long_featurette_is_still_a_film(self):
+        titles = [title(0, self.TWO_HOURS_TEN), title(1, 1800)]
+
+        kind, _, _ = DiscKind(titles, "SOME_MOVIE").verdict()
+
+        self.assertEqual(kind, "film")
+
+    def test_an_unreadable_disc_does_not_raise(self):
+        kind, is_confident, reason = DiscKind([], "").verdict()
+
+        self.assertEqual(kind, "film")
+        self.assertFalse(is_confident)
+        self.assertIn("nothing on the disc", reason)
 
 
 if __name__ == "__main__":

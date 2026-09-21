@@ -119,6 +119,13 @@ configure_makemkv_java() {
   print_line "MakeMKV will use ${MAKE_MKV_JAVA_COMMAND}"
 }
 
+configure_makemkv_track_selection() {
+  print_step "Telling MakeMKV to keep every audio and subtitle track"
+  print_line "Its stock rule drops anything not in your favourite language, which means"
+  print_line "the rippers never get a chance to offer other languages or subtitles."
+  set_makemkv_track_selection
+}
+
 create_media_folders() {
   print_step "Creating ${MEDIA_ROOT}"
   mkdir -p \
@@ -237,6 +244,7 @@ install_homebrew_if_needed
 install_brew_packages
 install_makemkv
 configure_makemkv_java
+configure_makemkv_track_selection
 create_media_folders
 set_computer_name_if_requested
 enable_smb_daemon

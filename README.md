@@ -243,6 +243,27 @@ Then, from another Mac, mount the share. On the Roku, open Plex and confirm the 
 
 ---
 
+## Just rip whatever is in the drive
+
+If you do not want to think about which script to run:
+
+```bash
+./rip.sh
+```
+
+It reads the disc, decides whether it holds a film or episodes of a show, and hands off to `rip-dvd.sh` or `rip-shows.sh`. Any other flags you pass go through to whichever it picks, so `./rip.sh --subtitle-langs eng` works the same either way.
+
+It decides from the shape of the disc rather than the label. A film disc has one dominant title surrounded by shorter extras; an episode disc has several titles of near-identical length, because episodes run to the same slot. Season or disc numbering on the label counts as further evidence. It tells you what it concluded and why:
+
+```
+This looks like a TV disc: two titles run to almost exactly the same length,
+and the label "FIREFLY_D1" carries season or disc numbering.
+```
+
+That combination is why it handles Firefly's first disc correctly despite the feature-length pilot sitting next to two ordinary episodes. Check without ripping using `./rip.sh --what-is-it`, and overrule it with `--movie` or `--tv`.
+
+---
+
 ## Rip a DVD or Blu-ray
 
 On the server Mac:
@@ -269,7 +290,7 @@ On the server Mac:
 
    Disc labels are not a fingerprint. Box-set discs, “DVD_VIDEO”, and TV seasons often miss or match the wrong film — read the list before you accept it.
 
-That decrypts with MakeMKV, then converts the longest title with HandBrake. The script reads the disc type and picks the preset: **Super HQ 480p30 Surround** for a DVD, **HQ 1080p30 Surround** for a Blu-ray. Override with `--preset "Super HQ 1080p30 Surround"` if you want a slower, better Blu-ray encode. Writes:
+That decrypts with MakeMKV, then converts the longest title with HandBrake. The script reads the disc type and picks the preset: **Super HQ 480p30 Surround** for a DVD, **Super HQ 1080p30 Surround** for a Blu-ray. See [Quality](#quality) to tune it. Writes:
 
 ```
 ~/Media/Movies/The Matrix (1999)/The Matrix (1999).mp4
@@ -289,12 +310,13 @@ Then in Plex: Movies → **Scan Library Files**. On the Roku, open Movies and pl
 
 Flags:
 
-- `--season N` / `--episode N` — TV numbering
 - `--list` — print the disc's titles and stop
 - `--title N` — rip that exact title instead of guessing
 - `--all` — decrypt every title to `~/Media/Rips/raw/` and stop, so you can sort them out yourself
 - `--preset NAME` — HandBrake preset, overriding the disc-type default
-- `--min-length 3600` — skip titles under an hour (trailers, extras). TV default is 900 seconds (15 minutes).
+- `--quality RF` — override the preset's quality, lower being better
+- `--audio-langs eng,spa` / `--subtitle-langs eng` — extra tracks, forces MKV
+- `--min-length 3600` — skip titles under an hour (trailers, extras).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
 - `--direct` — skip HandBrake and keep the DVD MPEG-2 stream as `.mkv`. Closest to the disc. Plex will transcode that for the Roku; 480p on an M1 is light.
 - `--yes` — take the first iTunes match without asking
@@ -367,6 +389,66 @@ Once you know which one you want, either encode it properly:
 ```
 
 or, if the raw file is good enough, move it into place yourself. Plex reads the folder name, so it needs to land as `~/Media/Movies/Knives Out (2019)/Knives Out (2019).mkv`. Delete the staging folder when you are done — it is large and Plex does not index it.
+
+---
+
+## Quality
+
+Both rippers choose an x264 preset from the disc type. The numbers that matter:
+
+| Disc | Preset | RF | x264 speed |
+|---|---|---|---|
+| DVD | Super HQ 480p30 Surround | 16 | veryslow |
+| Blu-ray | Super HQ 1080p30 Surround | 18 | veryslow |
+
+RF is the quality target and **lower is better**, each point costing roughly 20% more file size. Both are in the "Super HQ" family so a Blu-ray gets at least as much care as a DVD.
+
+Earlier versions used plain `HQ 1080p30 Surround` for Blu-ray, which is RF 20 on the faster `slow` preset. That encoded your Blu-rays *less* carefully than your DVDs, which is why they looked softer than expected. If you ripped Blu-rays before this change, they are worth doing again.
+
+The cost is time. `veryslow` at 1080p on an M1 runs several hours per film — plan on starting one overnight. Trade quality for time with `--preset "HQ 1080p30 Surround"`, or push the other way:
+
+```bash
+./rip.sh --quality 16          # better, larger, slower
+./rip.sh --quality 20          # faster, smaller, softer
+```
+
+If you want the disc exactly, do not encode at all:
+
+```bash
+./rip.sh --direct
+```
+
+That copies the original video stream untouched. It is genuinely identical to the disc and about 30 GB for a Blu-ray. Plex will transcode it on the fly for the Roku, which the M1 handles.
+
+### Audio
+
+The presets produce AAC stereo plus the surround track, which is what a Roku wants. Blu-ray lossless formats (TrueHD, DTS-HD) cannot go in an MP4 at all, so they are converted to AC3 5.1 — you keep surround, not the lossless master. To keep the original tracks, ask for audio languages, which switches the output to MKV and allows passthrough:
+
+```bash
+./rip.sh --audio-langs eng
+```
+
+---
+
+## Languages and subtitles
+
+**This needs `./setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./status.sh`, under **MakeMKV track selection**.
+
+Then ask for what you want, on either ripper or through `rip.sh`:
+
+```bash
+./rip.sh --audio-langs eng,spa
+./rip.sh --subtitle-langs eng
+./rip.sh --audio-langs eng,fra --subtitle-langs eng,fra
+```
+
+Languages are three-letter codes: `eng`, `spa`, `fra`, `deu`, `jpn`.
+
+Two things worth knowing. Asking for either **switches the output to MKV**, because MP4 cannot carry DVD or Blu-ray bitmap subtitles and cannot hold lossless audio. Plex and Roku play MKV, so this costs you nothing. And subtitles are included but **switched off by default** — nothing is burned into the picture, and you pick a track in the Plex player.
+
+Subtitles from discs are images, not text, so the Roku cannot overlay them without help; Plex transcodes to burn them in when you turn them on. That is normal and only happens while subtitles are switched on.
+
+Default behaviour with no flags is unchanged: English audio, no subtitles, MP4.
 
 ---
 
@@ -460,6 +542,8 @@ Flags:
 - `--list` — show the plan, rip nothing
 - `--min-length 1200` — ignore titles under 20 minutes (default 900 seconds)
 - `--preset NAME` — override the disc-type HandBrake preset
+- `--quality RF` — override the preset's quality, lower being better
+- `--audio-langs eng,spa` / `--subtitle-langs eng` — extra tracks, forces MKV
 - `--direct` — skip HandBrake, keep the decrypted `.mkv`
 - `--keep-raw` — keep the MakeMKV files in `~/Media/Rips/raw`
 - `--yes` — accept every guess without asking. It refuses to invent a show or season it could not determine, so unattended runs usually want `--show` and `--season` too.

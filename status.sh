@@ -72,6 +72,17 @@ else
 fi
 
 print_line ""
+print_line "MakeMKV track selection"
+makemkv_tracks="$(configured_makemkv_track_selection || true)"
+if [[ "$makemkv_tracks" == "$MAKE_MKV_KEEP_ALL_TRACKS" ]]; then
+  print_line "  rule                  ${makemkv_tracks} (every audio and subtitle track is kept)"
+else
+  print_line "  rule                  ${makemkv_tracks:-MakeMKV default}"
+  print_line "  note                  non-English tracks are being dropped during the rip."
+  print_line "                        Re-run ./setup.sh to keep them."
+fi
+
+print_line ""
 print_line "Sharing"
 if pgrep -x smbd >/dev/null; then
   print_yes_no "smbd running" 1

@@ -273,6 +273,91 @@ class EpisodeAlignment:
         return classes
 
 
+class DiscKind:
+    """Decides whether a disc holds a film or episodes of a show.
+
+    The tell is shape, not length. A film disc has one dominant title with
+    assorted shorter extras. An episode disc has several titles of near-identical
+    length, because episodes of a season run to the same slot.
+
+    Signals are weighed rather than applied in order, since any one of them can
+    be wrong: Firefly's first disc opens with a feature-length pilot that looks
+    exactly like a film sitting next to two episodes.
+    """
+
+    SHORTEST_EPISODE_SECONDS = 900
+    LONGEST_EPISODE_SECONDS = 4500
+    SIMILAR_LENGTH_TOLERANCE = 0.12
+
+    def __init__(self, titles, label=""):
+        self.titles = titles
+        self.label = label
+
+    def verdict(self):
+        """Return (kind, is_confident, reason)."""
+        show_score, show_reason = self._show_evidence()
+        film_score, film_reason = self._film_evidence()
+
+        if show_score > film_score:
+            return "show", show_score - film_score >= 2, show_reason
+        if film_score > show_score:
+            return "film", film_score - show_score >= 2, film_reason
+        return "film", False, "nothing on the disc clearly says film or show"
+
+    def _episode_length_titles(self):
+        return [
+            title for title in self.titles
+            if self.SHORTEST_EPISODE_SECONDS <= title["seconds"] <= self.LONGEST_EPISODE_SECONDS
+        ]
+
+    def _show_evidence(self):
+        episode_titles = self._episode_length_titles()
+        score = 0
+        reasons = []
+
+        if len(episode_titles) >= 3:
+            score += 3
+            reasons.append(f"{len(episode_titles)} titles run at episode length")
+        elif self._has_matching_pair(episode_titles):
+            score += 2
+            reasons.append("two titles run to almost exactly the same length")
+
+        if season_from_disc_label(self.label) or disc_number_from_label(self.label):
+            score += 2
+            reasons.append(f'the label "{self.label}" carries season or disc numbering')
+
+        return score, ", and ".join(reasons)
+
+    def _has_matching_pair(self, titles):
+        """Two titles within a few percent of each other look like episodes.
+
+        Extras on a film disc vary in length; episodes do not.
+        """
+        lengths = sorted(title["seconds"] for title in titles)
+        for shorter, longer in zip(lengths, lengths[1:]):
+            if longer and abs(longer - shorter) / longer <= self.SIMILAR_LENGTH_TOLERANCE:
+                return True
+        return False
+
+    def _film_evidence(self):
+        feature_titles = [
+            title for title in self.titles
+            if title["seconds"] > self.LONGEST_EPISODE_SECONDS
+        ]
+        if not feature_titles:
+            return 0, ""
+
+        longest = max(title["seconds"] for title in feature_titles)
+        score = 1
+        reasons = [f"the longest title runs {longest // 60} minutes"]
+
+        if len(self._episode_length_titles()) < 2:
+            score += 2
+            reasons.append("nothing else on the disc is episode length")
+
+        return score, ", and ".join(reasons)
+
+
 def _spaced_label(label):
     """Underscores are word characters, so \\b never fires inside FIREFLY_D1."""
     return re.sub(r"[_\-.]+", " ", label or "")
@@ -326,6 +411,13 @@ def run_label(arguments):
         season_from_disc_label(arguments.label) or "",
         disc_number_from_label(arguments.label) or "",
     ])
+
+
+def run_classify(arguments):
+    disc = DiscTitles.from_tsv(sys.stdin)
+    usable_titles = disc.episode_titles(0, arguments.min_length)
+    kind, is_confident, reason = DiscKind(usable_titles, arguments.label).verdict()
+    print_tsv([kind, "confident" if is_confident else "unsure", reason])
 
 
 def run_seasons(arguments):
@@ -395,6 +487,11 @@ def build_parser():
     label = commands.add_parser("label", help="read a show name, season, and disc number out of a volume label")
     label.add_argument("label")
     label.set_defaults(handler=run_label)
+
+    classify = commands.add_parser("classify", help="say whether the disc titles on stdin are a film or a show")
+    classify.add_argument("--label", default="")
+    classify.add_argument("--min-length", type=int, default=300)
+    classify.set_defaults(handler=run_classify)
 
     seasons = commands.add_parser("seasons", help="list each season and how many episodes it has")
     seasons.add_argument("--show-id", type=int, required=True)

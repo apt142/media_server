@@ -77,24 +77,50 @@ makemkv_settings_file() {
   printf '%s\n' "$library_path"
 }
 
-# Prints the Java path MakeMKV is set to use, or nothing when it has none.
-configured_makemkv_java() {
+read_makemkv_setting() {
+  local key="$1"
   local settings_file
   settings_file="$(makemkv_settings_file)"
   [[ -f "$settings_file" ]] || return 0
-  sed -n 's/^app_Java[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$settings_file" | tail -1
+  sed -n "s/^${key}[[:space:]]*=[[:space:]]*\"\(.*\)\"[[:space:]]*$/\1/p" "$settings_file" | tail -1
 }
 
-set_makemkv_java_path() {
-  local java_path="$1"
+write_makemkv_setting() {
+  local key="$1"
+  local value="$2"
   local settings_file
   settings_file="$(makemkv_settings_file)"
 
   mkdir -p "$(dirname "$settings_file")"
   touch "$settings_file"
-  # Drop any previous app_Java line, then append the one we want.
-  sed -i '' '/^app_Java[[:space:]]*=/d' "$settings_file"
-  printf 'app_Java = "%s"\n' "$java_path" >> "$settings_file"
+  # Drop any previous line for this key, then append the one we want.
+  sed -i '' "/^${key}[[:space:]]*=/d" "$settings_file"
+  printf '%s = "%s"\n' "$key" "$value" >> "$settings_file"
+}
+
+# Prints the Java path MakeMKV is set to use, or nothing when it has none.
+configured_makemkv_java() {
+  read_makemkv_setting "app_Java"
+}
+
+set_makemkv_java_path() {
+  write_makemkv_setting "app_Java" "$1"
+}
+
+# MakeMKV's stock rule is:
+#   -sel:all,+sel:(favlang|nolang|single),-sel:(havemulti|havecore),...
+# which throws away audio and subtitle tracks that are not in the favourite
+# language. Those tracks never reach HandBrake, so no HandBrake flag can bring
+# them back. Keeping everything in the raw rip lets HandBrake pick, and the raw
+# files are deleted after each rip anyway.
+MAKE_MKV_KEEP_ALL_TRACKS="+sel:all"
+
+configured_makemkv_track_selection() {
+  read_makemkv_setting "app_DefaultSelectionString"
+}
+
+set_makemkv_track_selection() {
+  write_makemkv_setting "app_DefaultSelectionString" "$MAKE_MKV_KEEP_ALL_TRACKS"
 }
 
 media_root_is_symlink() {
@@ -114,11 +140,29 @@ resolved_media_root() {
 
 # Picked from the disc type at run time. Encoding a Blu-ray with the 480p preset
 # would throw away most of the picture.
+#
+# Both are the "Super HQ" family so a Blu-ray is treated at least as carefully as
+# a DVD. The plain "HQ 1080p30 Surround" preset used here previously is RF 20 on
+# x264 "slow", against RF 16 "veryslow" for DVDs, which encoded the higher
+# quality source less carefully than the lower quality one.
 DVD_HANDBRAKE_PRESET="Super HQ 480p30 Surround"
 
-BLURAY_HANDBRAKE_PRESET="HQ 1080p30 Surround"
+BLURAY_HANDBRAKE_PRESET="Super HQ 1080p30 Surround"
 
 HANDBRAKE_PRESET=""
+
+# Empty means "whatever the preset says" (RF 16 for DVD, RF 18 for Blu-ray).
+# Lower is better quality and a bigger file.
+VIDEO_QUALITY_OVERRIDE=""
+
+# Empty means the preset's own audio handling: AAC stereo plus the surround
+# track. Set to a language list to keep every matching audio track instead.
+AUDIO_LANGUAGES=""
+SUBTITLE_LANGUAGES=""
+
+# Lossless Blu-ray audio only fits in MKV, and it only survives if "copy" is
+# allowed to pass these through rather than re-encoding them.
+SURROUND_COPY_MASK="aac,ac3,eac3,truehd,dts,dtshd,mp2,mp3,flac"
 
 # DVDs carry telecine flags that produce the timestamps Roku stalls on, so they
 # get a constant rate. Blu-ray video is already constant; forcing 30 there would
@@ -255,12 +299,56 @@ copy_title() {
   cp "$raw_mkv" "$output_file"
 }
 
+# MP4 cannot carry DVD or Blu-ray bitmap subtitles, nor TrueHD and DTS-HD. Asking
+# for either means the output has to be MKV. Plex and Roku play both.
+is_keeping_extra_tracks() {
+  [[ -n "$AUDIO_LANGUAGES" || -n "$SUBTITLE_LANGUAGES" ]]
+}
+
+output_container_extension() {
+  if is_keeping_extra_tracks; then
+    printf 'mkv'
+    return
+  fi
+  printf 'mp4'
+}
+
+handbrake_container_flags() {
+  if is_keeping_extra_tracks; then
+    printf '%s\n' "--format" "av_mkv"
+    return
+  fi
+  # --optimize moves the MP4 index to the front so playback can start sooner.
+  printf '%s\n' "--format" "av_mp4" "--optimize"
+}
+
+handbrake_track_flags() {
+  if [[ -n "$AUDIO_LANGUAGES" ]]; then
+    printf '%s\n' "--all-audio" "--audio-lang-list" "$AUDIO_LANGUAGES" \
+      "--audio-copy-mask" "$SURROUND_COPY_MASK" "--audio-fallback" "ac3"
+  fi
+  if [[ -n "$SUBTITLE_LANGUAGES" ]]; then
+    # Carry the subtitles but leave them switched off, so nothing is burned into
+    # the picture and Plex can offer them as a choice.
+    printf '%s\n' "--all-subtitles" "--subtitle-lang-list" "$SUBTITLE_LANGUAGES" \
+      "--subtitle-default" "none" "--subtitle-burned" "none"
+  fi
+  if [[ -n "$VIDEO_QUALITY_OVERRIDE" ]]; then
+    printf '%s\n' "--quality" "$VIDEO_QUALITY_OVERRIDE"
+  fi
+}
+
 convert_title() {
   local raw_mkv="$1"
   local output_file="$2"
   local handbrake
   local handbrake_status
+  local extra_flags=()
   handbrake="$(handbrake_command)"
+
+  while IFS= read -r flag; do
+    extra_flags+=("$flag")
+  done < <(handbrake_container_flags; handbrake_track_flags)
 
   mkdir -p "$(dirname "$output_file")"
   set +e
@@ -268,9 +356,8 @@ convert_title() {
     --input "$raw_mkv" \
     --output "$output_file" \
     --preset "$HANDBRAKE_PRESET" \
-    --format av_mp4 \
     "$HANDBRAKE_RATE_FLAG" \
-    --optimize
+    "${extra_flags[@]}"
   handbrake_status=$?
   set -e
   # HandBrakeCLI uses 1 for "finished with warnings". That is still a usable file.

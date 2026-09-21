@@ -46,6 +46,12 @@ Nothing is ripped until you have seen the episode list and agreed to it.
   --list                 Show the disc titles and the episode plan, rip nothing
   --min-length SECONDS   Ignore titles shorter than this (default: ${MINIMUM_EPISODE_SECONDS})
   --preset NAME          HandBrake preset, overriding the disc-type default
+  --quality RF           Override the preset's quality. Lower is better and
+                         bigger (DVD default 16, Blu-ray 18).
+  --audio-langs LIST     Keep every audio track in these languages, e.g.
+                         eng,spa. Forces an .mkv so surround audio survives.
+  --subtitle-langs LIST  Keep subtitles in these languages, switched off by
+                         default. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake and keep the decrypted .mkv
   --yes                  Accept every guess without asking
@@ -105,6 +111,30 @@ while [[ $# -gt 0 ]]; do
       HANDBRAKE_PRESET="${2:-}"
       if [[ -z "$HANDBRAKE_PRESET" ]]; then
         print_error "--preset needs a HandBrake preset name"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --audio-langs)
+      AUDIO_LANGUAGES="${2:-}"
+      if [[ -z "$AUDIO_LANGUAGES" ]]; then
+        print_error "--audio-langs needs a list like eng,spa,fra"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --subtitle-langs)
+      SUBTITLE_LANGUAGES="${2:-}"
+      if [[ -z "$SUBTITLE_LANGUAGES" ]]; then
+        print_error "--subtitle-langs needs a list like eng,spa"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --quality)
+      VIDEO_QUALITY_OVERRIDE="${2:-}"
+      if [[ ! "$VIDEO_QUALITY_OVERRIDE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        print_error "--quality needs an RF number, lower being better (try 18)"
         exit 1
       fi
       shift 2
@@ -426,10 +456,11 @@ rip_planned_episodes() {
   local plan="$1"
   local output_directory
   local raw_directory
-  local output_extension="mp4"
+  local output_extension
   local ripped_count=0
   local skipped_count=0
 
+  output_extension="$(output_container_extension)"
   if [[ "$is_copying_without_encode" -eq 1 ]]; then
     output_extension="mkv"
   fi
