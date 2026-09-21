@@ -155,6 +155,16 @@ HANDBRAKE_PRESET=""
 # Lower is better quality and a bigger file.
 VIDEO_QUALITY_OVERRIDE=""
 
+# How hard x264 works, which is a separate thing from how good the result looks.
+# RF is the quality target; this only decides how long x264 spends finding ways
+# to hit it in fewer bits.
+#
+# Both Super HQ presets ask for "veryslow", which on an 8-core M1 Pro means 5-7
+# hours for a Blu-ray. "slow" hits the same RF in 2-3 hours for roughly 5-10%
+# more file size, so it is the better default on this hardware. Ask for
+# "veryslow" explicitly if you would rather have the smaller file.
+ENCODER_SPEED="slow"
+
 # Empty means the preset's own audio handling: AAC stereo plus the surround
 # track. Set to a language list to keep every matching audio track instead.
 AUDIO_LANGUAGES=""
@@ -345,6 +355,9 @@ handbrake_track_flags() {
   fi
   if [[ -n "$VIDEO_QUALITY_OVERRIDE" ]]; then
     printf '%s\n' "--quality" "$VIDEO_QUALITY_OVERRIDE"
+  fi
+  if [[ -n "$ENCODER_SPEED" ]]; then
+    printf '%s\n' "--encoder-preset" "$ENCODER_SPEED"
   fi
 }
 

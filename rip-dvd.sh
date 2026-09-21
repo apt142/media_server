@@ -47,6 +47,10 @@ If you omit the name, the script reads the disc label and looks it up on Wikidat
   --preset NAME          HandBrake preset, overriding the disc-type default
   --quality RF           Override the preset's quality. Lower is better and
                          bigger (DVD default 16, Blu-ray 18).
+  --speed NAME           x264 effort (default slow). Quality is set by
+                         --quality, not this, so "veryslow" does not look
+                         better than the default -- it takes 2-3x as long to
+                         reach the same quality in a slightly smaller file.
   --audio-langs LIST     Keep every audio track in these languages, e.g.
                          eng,spa. Forces an .mkv so surround audio survives.
   --subtitle-langs LIST  Keep subtitles in these languages, switched off by
@@ -114,6 +118,17 @@ while [[ $# -gt 0 ]]; do
         print_error "--quality needs an RF number, lower being better (try 18)"
         exit 1
       fi
+      shift 2
+      ;;
+    --speed)
+      ENCODER_SPEED="${2:-}"
+      case "$ENCODER_SPEED" in
+        ultrafast|superfast|veryfast|faster|fast|medium|slow|slower|veryslow|placebo) ;;
+        *)
+          print_error "--speed needs an x264 preset name, e.g. slow or veryslow"
+          exit 1
+          ;;
+      esac
       shift 2
       ;;
     --min-length)

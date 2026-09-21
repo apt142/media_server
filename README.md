@@ -321,6 +321,7 @@ Flags:
 - `--all` — decrypt every title to `~/Media/Rips/raw/` and stop, so you can sort them out yourself
 - `--preset NAME` — HandBrake preset, overriding the disc-type default
 - `--quality RF` — override the preset's quality, lower being better
+- `--speed veryslow` — more x264 effort; smaller files, 2-3x the time, same quality target (default `slow`)
 - `--audio-langs eng,spa` / `--subtitle-langs eng` — extra tracks, forces MKV
 - `--min-length 3600` — skip titles under an hour (trailers, extras).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
@@ -421,19 +422,44 @@ Both rippers choose an x264 preset from the disc type. The numbers that matter:
 
 | Disc | Preset | RF | x264 speed |
 |---|---|---|---|
-| DVD | Super HQ 480p30 Surround | 16 | veryslow |
-| Blu-ray | Super HQ 1080p30 Surround | 18 | veryslow |
+| DVD | Super HQ 480p30 Surround | 16 | slow |
+| Blu-ray | Super HQ 1080p30 Surround | 18 | slow |
 
 RF is the quality target and **lower is better**, each point costing roughly 20% more file size. Both are in the "Super HQ" family so a Blu-ray gets at least as much care as a DVD.
 
-Earlier versions used plain `HQ 1080p30 Surround` for Blu-ray, which is RF 20 on the faster `slow` preset. That encoded your Blu-rays *less* carefully than your DVDs, which is why they looked softer than expected. If you ripped Blu-rays before this change, they are worth doing again.
+The speed is `slow` rather than the `veryslow` these presets ask for, which does not affect the quality target — see [Speed](#speed-and-why-it-is-not-the-same-as-quality) below.
 
-The cost is time. `veryslow` at 1080p on an M1 runs several hours per film — plan on starting one overnight. Trade quality for time with `--preset "HQ 1080p30 Surround"`, or push the other way:
+Earlier versions used plain `HQ 1080p30 Surround` for Blu-ray, which is RF 20 on the faster `slow` preset. That encoded your Blu-rays *less* carefully than your DVDs, which is why they looked softer than expected. If you ripped Blu-rays before this change, they are worth doing again.
 
 ```bash
 ./rip.sh --quality 16          # better, larger, slower
 ./rip.sh --quality 20          # faster, smaller, softer
 ```
+
+### Speed, and why it is not the same as quality
+
+x264 effort defaults to **`slow`**, overriding the `veryslow` both Super HQ presets ask for.
+
+This costs nothing you can see, which is the part worth understanding. **RF is the quality target; the speed preset is not.** At the same RF, `slow` and `veryslow` aim for the same perceptual quality — `veryslow` merely searches harder for ways to reach it in fewer bits. Going from `veryslow` to `slow` buys back more than half the encode time for roughly 5-10% larger files, not for a softer picture.
+
+If you would rather have the smaller file and can spare the hours, ask for it:
+
+```bash
+./rip.sh --speed veryslow
+```
+
+What you should *not* do is reach for `--preset "HQ 1080p30 Surround"` to save time. That preset changes the effort *and* raises RF to 20, giving back the quality the Super HQ default exists to protect. Change one thing at a time: `--speed` for time, `--quality` for quality.
+
+### How long a Blu-ray takes
+
+On an 8-core M1 Pro (6 performance cores plus 2 efficiency ones; x264 only really scales on the performance cores), a two-hour film at the defaults runs:
+
+| Phase | Time | Bound by |
+|---|---|---|
+| MakeMKV decrypt | 20-40 min | USB drive read speed |
+| HandBrake encode | 2-3 hrs | the 6 performance cores |
+
+So about **three hours start to finish**, or 5-7 hours for the encode alone at `--speed veryslow`. HandBrake prints a live fps and ETA, so you can check within a minute of it starting. A base M1 is roughly half the speed; an M1 Max roughly double. DVDs are far quicker — well under an hour, since 480p is a fraction of the pixels.
 
 If you want the disc exactly, do not encode at all:
 
@@ -566,6 +592,7 @@ Flags:
 - `--min-length 1200` — ignore titles under 20 minutes (default 900 seconds)
 - `--preset NAME` — override the disc-type HandBrake preset
 - `--quality RF` — override the preset's quality, lower being better
+- `--speed veryslow` — more x264 effort; smaller files, 2-3x the time, same quality target (default `slow`)
 - `--audio-langs eng,spa` / `--subtitle-langs eng` — extra tracks, forces MKV
 - `--direct` — skip HandBrake, keep the decrypted `.mkv`
 - `--keep-raw` — keep the MakeMKV files in `~/Media/Rips/raw`
