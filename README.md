@@ -479,6 +479,28 @@ The presets produce AAC stereo plus the surround track, which is what a Roku wan
 
 ---
 
+## Check a rip will actually play on the Roku
+
+```bash
+./check-rip.sh                                  # everything in the library
+./check-rip.sh ~/Media/Movies/Knives\ Out\ \(2019\)/*.mp4
+```
+
+Plex hides this problem rather than reporting it. A file the Roku cannot decode still "works" — Plex silently re-encodes it in real time, and that is where stuttering, buffering and outright playback failures come from. This tells you which it is:
+
+```
+Knives Out (2019).mp4
+  video       h264 High, level 4.0, 4 ref frames
+  audio       aac ac3
+  verdict     plays directly on a Roku
+```
+
+A Roku decodes H.264 in hardware and is strict about it: High profile, level 4.2 at most, and no more than 4 reference frames at 1080p. Exceed any of those and it hands the file back to Plex. The rippers now pin profile and level explicitly (`high`, level 4.0 for Blu-ray and 3.1 for DVD) so this cannot drift, but the checker is the way to confirm what you already have on disk.
+
+Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD) and image-based subtitles (PGS, VOBSUB) both force Plex to transcode, and both only appear if you asked for them with `--audio-langs` or `--subtitle-langs`. If a Roku is your main player, plain `./rip.sh` avoids both.
+
+---
+
 ## Languages and subtitles
 
 **This needs `./setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./status.sh`, under **MakeMKV track selection**.

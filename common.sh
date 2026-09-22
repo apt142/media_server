@@ -165,6 +165,19 @@ VIDEO_QUALITY_OVERRIDE=""
 # "veryslow" explicitly if you would rather have the smaller file.
 ENCODER_SPEED="slow"
 
+# Roku decodes H.264 in hardware and is strict about it: High profile, level 4.0
+# at 1080p, 3.1 at 480p. Go past that -- most easily by letting x264 keep more
+# reference frames than the level allows -- and the Roku refuses the stream, so
+# Plex falls back to transcoding or playback fails outright.
+#
+# The presets do set these, but they are pinned here rather than trusted,
+# because overriding one video setting on the command line (--encoder-preset)
+# can leave HandBrake applying its own defaults for the rest.
+ENCODER_PROFILE="high"
+DVD_ENCODER_LEVEL="3.1"
+BLURAY_ENCODER_LEVEL="4.0"
+ENCODER_LEVEL="$DVD_ENCODER_LEVEL"
+
 # Empty means the preset's own audio handling: AAC stereo plus the surround
 # track. Set to a language list to keep every matching audio track instead.
 AUDIO_LANGUAGES=""
@@ -246,11 +259,13 @@ choose_handbrake_preset() {
 
   if [[ "$media_type" == *[Bb]lu-ray* ]]; then
     HANDBRAKE_RATE_FLAG="--pfr"
+    ENCODER_LEVEL="$BLURAY_ENCODER_LEVEL"
     HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$BLURAY_HANDBRAKE_PRESET}"
     print_step "Blu-ray detected, encoding with \"${HANDBRAKE_PRESET}\""
     print_line "Leave about 30 GB free for the raw rip. The encode takes hours, not minutes."
   else
     HANDBRAKE_RATE_FLAG="--cfr"
+    ENCODER_LEVEL="$DVD_ENCODER_LEVEL"
     HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$DVD_HANDBRAKE_PRESET}"
     print_step "DVD detected, encoding with \"${HANDBRAKE_PRESET}\""
   fi
@@ -342,6 +357,17 @@ handbrake_container_flags() {
   printf '%s\n' "--format" "av_mp4" "--optimize"
 }
 
+handbrake_video_flags() {
+  # Profile and level go first so nothing later can quietly widen them.
+  printf '%s\n' "--encoder-profile" "$ENCODER_PROFILE" "--encoder-level" "$ENCODER_LEVEL"
+  if [[ -n "$VIDEO_QUALITY_OVERRIDE" ]]; then
+    printf '%s\n' "--quality" "$VIDEO_QUALITY_OVERRIDE"
+  fi
+  if [[ -n "$ENCODER_SPEED" ]]; then
+    printf '%s\n' "--encoder-preset" "$ENCODER_SPEED"
+  fi
+}
+
 handbrake_track_flags() {
   if [[ -n "$AUDIO_LANGUAGES" ]]; then
     printf '%s\n' "--all-audio" "--audio-lang-list" "$AUDIO_LANGUAGES" \
@@ -352,12 +378,6 @@ handbrake_track_flags() {
     # the picture and Plex can offer them as a choice.
     printf '%s\n' "--all-subtitles" "--subtitle-lang-list" "$SUBTITLE_LANGUAGES" \
       "--subtitle-default" "none" "--subtitle-burned" "none"
-  fi
-  if [[ -n "$VIDEO_QUALITY_OVERRIDE" ]]; then
-    printf '%s\n' "--quality" "$VIDEO_QUALITY_OVERRIDE"
-  fi
-  if [[ -n "$ENCODER_SPEED" ]]; then
-    printf '%s\n' "--encoder-preset" "$ENCODER_SPEED"
   fi
 }
 
@@ -371,7 +391,7 @@ convert_title() {
 
   while IFS= read -r flag; do
     extra_flags+=("$flag")
-  done < <(handbrake_container_flags; handbrake_track_flags)
+  done < <(handbrake_container_flags; handbrake_video_flags; handbrake_track_flags)
 
   mkdir -p "$(dirname "$output_file")"
   set +e
