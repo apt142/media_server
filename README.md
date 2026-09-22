@@ -635,6 +635,28 @@ Worth running if you change how discs are identified. They cover the Play All an
 
 ---
 
+## Running out of disk space
+
+A Blu-ray rip needs room for the raw decrypted title *and* the encode it feeds, since both exist at once until the rip finishes. For a feature film that is **40-50 GB**, briefly, even though the file you keep is a fraction of that.
+
+The rippers check before starting and stop with a straight answer:
+
+```
+error: Not enough disk space to rip this.
+  needs    about 49 GB, for the raw rip and the encode that follows
+  free     0.45 GB where /Users/you/Media lives
+```
+
+This matters because MakeMKV does not stop politely when the disk fills. It writes until the write fails, reports a posix error buried in a hundred lines of its own logging, and throws away however long it had been running.
+
+If the internal disk is tight, move the library to an external drive — the rippers then stage through it too:
+
+```bash
+./move-library-to-usb.sh /Volumes/YourDrive
+```
+
+---
+
 ## Move the library to a USB drive later
 
 When the internal disk fills up:

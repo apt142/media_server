@@ -327,6 +327,51 @@ human_gigabytes() {
   awk -v bytes="$bytes" 'BEGIN { printf "%.1f GB", bytes / 1073741824 }'
 }
 
+title_size_bytes() {
+  local disc_info="$1"
+  local wanted_id="$2"
+  makemkv_title_table <<< "$disc_info" \
+    | awk -F'\t' -v wanted="$wanted_id" '$1 == wanted { print $4 }'
+}
+
+# The raw rip and the encode it feeds live side by side until the rip finishes,
+# so the peak need is more than the title itself.
+SPACE_HEADROOM_MULTIPLIER="1.3"
+
+# MakeMKV does not stop politely when the disk fills. It writes until the write
+# fails, then reports a posix error buried in a hundred lines of its own
+# logging, having wasted however long it ran for. Asking first turns that into
+# one sentence, before anything spins.
+#
+# Comparisons go through awk because free_gigabytes_at reports a decimal, and
+# bash arithmetic refuses those outright.
+require_free_space_for() {
+  local needed_bytes="$1"
+  local destination="$2"
+  local needed_gigabytes
+  local free_gigabytes
+
+  [[ "$needed_bytes" =~ ^[0-9]+$ ]] || return 0
+  free_gigabytes="$(free_gigabytes_at "$destination")"
+
+  if awk -v needed="$needed_bytes" -v free_space="$free_gigabytes" \
+       -v headroom="$SPACE_HEADROOM_MULTIPLIER" \
+       'BEGIN { exit !(needed * headroom / 1073741824 <= free_space) }'; then
+    return 0
+  fi
+
+  needed_gigabytes="$(awk -v needed="$needed_bytes" -v headroom="$SPACE_HEADROOM_MULTIPLIER" \
+    'BEGIN { printf "%.0f", needed * headroom / 1073741824 }')"
+
+  print_error "Not enough disk space to rip this."
+  print_line "  needs    about ${needed_gigabytes} GB, for the raw rip and the encode that follows"
+  print_line "  free     ${free_gigabytes} GB where $(resolved_media_root) lives"
+  print_line ""
+  print_line "Clear some room, or move the library to an external drive:"
+  print_line "  ./move-library-to-usb.sh /Volumes/YourDrive"
+  exit 1
+}
+
 copy_title() {
   local raw_mkv="$1"
   local output_file="$2"

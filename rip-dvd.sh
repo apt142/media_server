@@ -408,11 +408,13 @@ rip_movie() {
   fi
 
   print_line "Title ${title_id}: $(describe_title "$disc_info" "$title_id")"
+  require_free_space_for "$(title_size_bytes "$disc_info" "$title_id")" "$raw_directory"
   rip_single_title "$title_id" "$raw_directory"
 
   raw_mkv="$(largest_file_in_directory "$raw_directory")"
   if [[ -z "$raw_mkv" ]]; then
     print_error "MakeMKV did not produce an .mkv for title ${title_id}."
+    print_line "Its messages are above. Running out of disk space is the usual cause."
     exit 1
   fi
   if [[ "$is_copying_without_encode" -eq 1 ]]; then
@@ -486,14 +488,7 @@ rip_all_titles() {
 
   # Nobody is watching this run, so refuse outright rather than filling the disk
   # and failing partway through.
-  local needed_gigabytes free_gigabytes
-  needed_gigabytes="$(awk -v bytes="$total_bytes" 'BEGIN { printf "%.0f", bytes / 1073741824 }')"
-  free_gigabytes="$(free_gigabytes_at "$destination")"
-  if [[ "$free_gigabytes" -lt "$needed_gigabytes" ]]; then
-    print_error "Not enough room: needs about ${needed_gigabytes} GB, only ${free_gigabytes} GB free."
-    print_line "Free some space, or move the library to a USB drive with ./move-library-to-usb.sh"
-    exit 1
-  fi
+  require_free_space_for "$total_bytes" "$destination"
 
   if [[ "$is_asking_before_choices" -eq 1 ]]; then
     local answer

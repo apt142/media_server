@@ -43,13 +43,16 @@ FILM_TYPES = {
 # silently: Spirited Away is an "anime film", which no reasonable whitelist
 # would have guessed. The one-line description is a cheap second opinion, and it
 # already comes back with the search results.
-DESCRIBES_A_FILM = re.compile(r"\bfilms?\b", re.I)
+# Singular on purpose. A single film is "a 1999 science fiction film"; a
+# collection is "1999-present films directed by the Wachowskis", which is how
+# "The Matrix series" used to pass for a film.
+DESCRIBES_A_FILM = re.compile(r"\bfilm\b", re.I)
 
 DESCRIBES_SOMETHING_ELSE = re.compile(
     r"\b(episode|album|song|single|soundtrack|video game|"
     r"television series|tv series|book|novel|play|musical|"
-    r"film series|film festival|film studio|filmmaker|film director|"
-    r"production company|band|character)\b",
+    r"films|series|franchise|film festival|film studio|filmmaker|"
+    r"film director|production company|band|character)\b",
     re.I,
 )
 

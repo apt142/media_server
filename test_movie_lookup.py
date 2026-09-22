@@ -99,6 +99,20 @@ class IsFilmTests(unittest.TestCase):
     def test_a_film_series_is_not_something_you_can_rip(self):
         self.assertFalse(is_film({}, "American film series"))
 
+    def test_a_collection_described_in_the_plural_is_not_a_film(self):
+        """"The Matrix series" is described as "1999-present films ..."."""
+        self.assertFalse(
+            is_film({}, "1999-present films directed by The Wachowskis")
+        )
+
+    def test_a_media_franchise_is_not_a_film(self):
+        self.assertFalse(is_film({}, "science fiction action media franchise"))
+
+    def test_an_ordinary_film_description_still_passes(self):
+        self.assertTrue(
+            is_film({}, "1999 American science fiction action thriller film")
+        )
+
     def test_a_film_festival_is_not_a_film(self):
         self.assertFalse(is_film({}, "annual film festival in Utah"))
 

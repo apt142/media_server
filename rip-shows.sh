@@ -527,6 +527,9 @@ rip_planned_episodes() {
     fi
 
     print_step "s$(padded_two_digits "$season")e$(padded_two_digits "$episode") ${episode_name} (${duration})"
+    # Each episode is encoded and its raw file deleted before the next starts,
+    # so it is one episode's worth of space that has to be there, not the disc's.
+    require_free_space_for "$(title_size_bytes "$(scan_disc_info)" "$title_id")" "$raw_directory"
     if rip_one_episode "$title_id" "$output_file" "${raw_directory}/title-${title_id}"; then
       ripped_count=$((ripped_count + 1))
     fi
