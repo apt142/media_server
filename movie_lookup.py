@@ -197,12 +197,19 @@ def clean_disc_label(label):
     text = re.sub(r"\s+", " ", text).strip()
 
     # Bookkeeping that studios append. Repeated because labels stack several of
-    # them: "..._16X9_FEATURE_DISC1".
+    # them: "FELLOWSHIP_EE_D1" is an edition marker on top of a disc number.
+    #
+    # The edition markers matter more than they look. Without them the Lord of
+    # the Rings extended editions search for "FELLOWSHIP EE", which matches
+    # nothing at all.
     junk = (
         r"disc\s*\d+|d\d+|side\s*[ab]|s\d+|season\s*\d+|"
         r"feature|main|movie|film|widescreen|fullscreen|ws|fs|"
         r"16x9|4x3|dvd\s*video|dvdvideo|dvd|bluray|blu\s*ray|bd\d*|ntsc|pal|"
-        r"disc|vol\s*\d+"
+        r"disc|vol\s*\d+|"
+        r"ee|se|extended|extended\s*edition|special\s*edition|collectors?\s*edition|"
+        r"anniversary\s*edition|theatrical(\s*cut)?|directors?\s*cut|"
+        r"unrated|uncut|remastered"
     )
     for _ in range(4):
         shortened = re.sub(rf"\s+({junk})\s*$", "", text, flags=re.I)

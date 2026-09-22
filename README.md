@@ -326,6 +326,7 @@ Flags:
 - `--min-length 3600` — skip titles under an hour (trailers, extras).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
 - `--direct` — skip HandBrake and keep the DVD MPEG-2 stream as `.mkv`. Closest to the disc. Plex will transcode that for the Roku; 480p on an M1 is light.
+- `--part N` — this disc is part N of a film split over several discs; join them with `./join-parts.sh`
 - `--ask` — confirm the title instead of taking the best match
 - `--no-eject` — leave the disc in the drive when it finishes
 
@@ -476,6 +477,39 @@ The presets produce AAC stereo plus the surround track, which is what a Roku wan
 ```bash
 ./rip.sh --audio-langs eng
 ```
+
+---
+
+## A film split across two discs
+
+Extended editions often split one film over two Blu-rays — the Lord of the Rings extended editions do. Rip each disc with its part number, then join them:
+
+```bash
+./rip.sh --part 1 "The Lord of the Rings: The Fellowship of the Ring" 2001
+# swap discs
+./rip.sh --part 2 "The Lord of the Rings: The Fellowship of the Ring" 2001
+
+./join-parts.sh
+```
+
+That leaves one file, `The Lord of the Rings - The Fellowship of the Ring (2001).mkv`, and removes the parts.
+
+**Pass the title explicitly for these.** Extended edition discs carry labels like `FELLOWSHIP_EE_D1`, which reduces to "FELLOWSHIP" — not enough for the lookup to identify the film. Both discs must be given the *same* title, since parts only join up when they are filed under the same name. Disc 2 tells you what it found so you can catch a mismatch:
+
+```
+Joining "The Lord of the Rings - The Fellowship of the Ring (2001)", which
+already has: ... - part1.mp4
+```
+
+If it instead says no earlier parts were found, the titles did not match and the join will not work.
+
+### Why it joins rather than leaving the parts
+
+Plex can play "stacked" part files, but [its own documentation](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/) recommends against relying on it: preview thumbnails, chapter images and audio/subtitle selection all degrade across parts, and not every client plays them. Joining sidesteps all of it.
+
+The join is a remux — nothing is re-encoded, nothing is lost, and it runs at disk speed rather than encode speed. It uses `mkvmerge`, installed on first use.
+
+Two things it checks before touching anything. It refuses to join parts that were not encoded identically, since splicing mismatched video produces a file that plays the first disc and then falls apart. And it verifies the joined file is as long as its parts before deleting them, so a truncated merge cannot quietly eat your rip. Use `--keep-parts` if you would rather hold on to them.
 
 ---
 

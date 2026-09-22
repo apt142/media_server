@@ -8,6 +8,10 @@ source "${SCRIPT_DIRECTORY}/common.sh"
 MOVIE_LOOKUP_COMMAND="${SCRIPT_DIRECTORY}/movie_lookup.py"
 
 MINIMUM_TITLE_LENGTH_SECONDS=300
+
+# Set by --part when a film is spread over more than one disc, as the Lord of
+# the Rings extended editions are. Empty means the usual single-disc film.
+MOVIE_PART_NUMBER=""
 is_keeping_raw_rip=0
 is_copying_without_encode=0
 # Ripping a disc is a walk-away job, so the lookup takes its own best match
@@ -57,6 +61,10 @@ If you omit the name, the script reads the disc label and looks it up on Wikidat
                          default. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake. Copy decrypted MPEG-2 as .mkv
+  --part N               This disc is part N of a film split over several
+                         discs, like the Lord of the Rings extended editions.
+                         Rip each disc with its own number, then join them
+                         with ./join-parts.sh
   --ask                  Stop and confirm the title instead of taking the best
                          match. Without this the rip runs unattended.
   --no-eject             Leave the disc in the drive when it finishes
@@ -148,6 +156,14 @@ while [[ $# -gt 0 ]]; do
       is_copying_without_encode=1
       shift
       ;;
+    --part)
+      MOVIE_PART_NUMBER="${2:-}"
+      if [[ ! "$MOVIE_PART_NUMBER" =~ ^[1-8]$ ]]; then
+        print_error "--part needs a disc number from 1 to 8"
+        exit 1
+      fi
+      shift 2
+      ;;
     --ask)
       is_asking_before_choices=1
       shift
@@ -185,12 +201,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Colons have to go. Plenty of films have them ("The Lord of the Rings: The
+# Fellowship of the Ring"), Finder shows them as slashes, Windows clients on the
+# SMB share cannot open them at all, and Plex's own naming rules forbid them.
 plex_movie_folder_name() {
+  local name="$MOVIE_TITLE"
   if [[ -n "$MOVIE_YEAR" ]]; then
-    printf '%s (%s)' "$MOVIE_TITLE" "$MOVIE_YEAR"
-    return
+    name="${name} (${MOVIE_YEAR})"
   fi
-  printf '%s' "$MOVIE_TITLE"
+  sanitize_file_component "$name"
 }
 
 
@@ -368,6 +387,29 @@ title_is_flagged_main() {
     | awk -F'\t' -v wanted="$wanted_id" '$1 == wanted && $6 == "main" { found = 1 } END { exit !found }'
 }
 
+# A part only ever joins up with parts filed under exactly the same name, so say
+# up front what this disc is landing next to. Getting a different title out of
+# the lookup for disc 2 is the one thing that quietly breaks this.
+report_sibling_parts() {
+  local output_directory="$1"
+  local library_name="$2"
+  local -a existing=()
+
+  while IFS= read -r -d '' found; do
+    existing+=("$(basename "$found")")
+  done < <(find "$output_directory" -maxdepth 1 -type f -name "${library_name} - part*" -print0 2>/dev/null | sort -z)
+
+  if [[ "${#existing[@]}" -eq 0 ]]; then
+    if [[ "$MOVIE_PART_NUMBER" != "1" ]]; then
+      print_line "No earlier parts of \"${library_name}\" are in the library yet."
+      print_line "If disc 1 is already ripped under a different name, this will not join up with it."
+    fi
+    return
+  fi
+
+  print_line "Joining \"${library_name}\", which already has: ${existing[*]}"
+}
+
 rip_movie() {
   local library_name
   local raw_directory
@@ -384,6 +426,10 @@ rip_movie() {
     output_extension="mkv"
   fi
   output_file="${output_directory}/${library_name}.${output_extension}"
+  if [[ -n "$MOVIE_PART_NUMBER" ]]; then
+    output_file="${output_directory}/${library_name} - part${MOVIE_PART_NUMBER}.${output_extension}"
+    report_sibling_parts "$output_directory" "$library_name"
+  fi
 
   if [[ -e "$output_file" ]]; then
     print_error "Already exists: ${output_file}"
@@ -584,5 +630,12 @@ if [[ -z "$MOVIE_TITLE" ]]; then
 fi
 rip_movie
 eject_disc
+
+if [[ -n "$MOVIE_PART_NUMBER" ]]; then
+  print_line ""
+  print_line "That is part ${MOVIE_PART_NUMBER}. Once every disc is ripped, join them into one film:"
+  print_line "  ./join-parts.sh"
+  exit 0
+fi
 
 print_line "Plex should pick it up on the next library scan. If not: library → More → Scan Library Files."

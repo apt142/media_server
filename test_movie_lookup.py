@@ -68,6 +68,12 @@ class CleanDiscLabelTests(unittest.TestCase):
         )
         self.assertEqual(clean_disc_label("TOY_STORY_16X9_DVD_VIDEO"), "TOY STORY")
 
+    def test_strips_edition_markers(self):
+        """Lord of the Rings extended editions label discs like FELLOWSHIP_EE_D1."""
+        self.assertEqual(clean_disc_label("FELLOWSHIP_EE_D1"), "FELLOWSHIP")
+        self.assertEqual(clean_disc_label("BLADE_RUNNER_DIRECTORS_CUT"), "BLADE RUNNER")
+        self.assertEqual(clean_disc_label("ALIENS_SPECIAL_EDITION_D2"), "ALIENS")
+
     def test_keeps_a_trailing_number_that_is_part_of_the_title(self):
         """2049 is the film, not a disc number."""
         self.assertEqual(clean_disc_label("BLADE_RUNNER_2049"), "BLADE RUNNER 2049")
