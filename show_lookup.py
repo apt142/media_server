@@ -286,7 +286,16 @@ class DiscKind:
     """
 
     SHORTEST_EPISODE_SECONDS = 900
-    LONGEST_EPISODE_SECONDS = 4500
+
+    # 65 minutes. Episodic television runs to roughly 22, 44 or 60 minute slots,
+    # so anything longer is far more likely to be a feature. The old ceiling of
+    # 75 minutes read a double-feature DVD -- two 72 minute B-movies, which is a
+    # common way old films are reissued -- as a pair of episodes.
+    #
+    # Feature-length pilots do exist above this line, but they sit next to
+    # ordinary episodes that still count, so those discs are unaffected.
+    LONGEST_EPISODE_SECONDS = 3900
+
     SIMILAR_LENGTH_TOLERANCE = 0.12
 
     def __init__(self, titles, label=""):
