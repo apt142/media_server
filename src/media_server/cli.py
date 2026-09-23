@@ -235,27 +235,36 @@ class PipelineCommands:
         return 0
 
     def encode_queue(self, is_encoding_one: bool) -> int:
-        """Transcode the backlog, or just the next job in it."""
+        """Transcode the backlog, then put what came out on the library drive.
+
+        Delivery runs even when there was nothing to transcode, because what
+        changed may have been the library drive coming back rather than a new
+        disc arriving. Stopping after the transcode would leave finished work
+        sitting in staging with nothing to say it was only half done.
+        """
         if not is_handbrake_installed():
             print(HANDBRAKE_MISSING_MESSAGE)
             return 1
         if not self.has_catalog:
-            print("Nothing waiting to be transcoded.")
+            print("Nothing has been ripped yet.")
             return 0
 
+        self._transcode(is_encoding_one)
+        return self.deliver_waiting_jobs()
+
+    def _transcode(self, is_encoding_one: bool) -> None:
         worker = EncodeWorker(self.configuration, self.catalog)
         if is_encoding_one:
             print(worker.encode_next_job().message)
-            return 0
+            return
 
         outcomes = worker.encode_until_queue_is_empty()
         if not outcomes:
             print("Nothing waiting to be transcoded.")
-            return 0
+            return
 
         for outcome in outcomes:
             print(outcome.message)
-        return 0
 
     def watch_drive(self, maximum_queue_depth: int | None) -> int:
         """Poll the drive and rip every disc that goes into it."""
@@ -290,6 +299,10 @@ class PipelineCommands:
         report = delivery.deliver_waiting_jobs()
 
         print(report.describe())
+        if not report.is_library_available:
+            # Naming the path matters: a drive that is plugged in but has no
+            # library folder on it yet looks exactly like one that is absent.
+            print(f"  Looking for {self.configuration.library_root}")
         for job in report.delivered_jobs:
             print(f"  delivered {job.describe_title()}")
         return 0

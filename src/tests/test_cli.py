@@ -1,5 +1,6 @@
 import io
 import os
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -339,28 +340,75 @@ class EncodeCommandTests(CommandLineTestCase):
             with mock.patch("media_server.cli.EncodeWorker", build_worker):
                 return self._run_command("encode", *extra_arguments)
 
-    def test_an_empty_queue_says_so(self):
+    def _state_of(self, job_id: int) -> JobState:
+        configuration = Configuration(
+            staging_root=self.staging_root, library_root=self.library_root
+        )
+        with JobCatalog(configuration.catalog_path) as catalog:
+            return catalog.job_with_id(job_id).state
+
+    def test_nothing_ripped_yet_says_so(self):
         self._write_configuration_file()
 
         exit_code, output = self._run_encode()
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("Nothing waiting to be transcoded.", output)
+        self.assertIn("Nothing has been ripped yet.", output)
 
-    def test_a_staged_job_is_transcoded_and_waits_for_delivery(self):
+    def test_a_staged_job_is_transcoded_and_delivered_in_one_go(self):
         self._write_configuration_file()
         job_id = self._seed_job()
 
         exit_code, output = self._run_encode()
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("Waiting for the library drive.", output)
+        self.assertIn("delivered The Matrix (1999)", output)
+        self.assertEqual(self._state_of(job_id), JobState.DELIVERED)
 
-        configuration = Configuration(
-            staging_root=self.staging_root, library_root=self.library_root
+    def test_the_finished_file_lands_in_the_library(self):
+        self._write_configuration_file()
+        self._seed_job()
+
+        self._run_encode()
+
+        self.assertTrue(
+            (
+                self.library_root / "Movies/The Matrix (1999)/The Matrix (1999).mp4"
+            ).is_file()
         )
-        with JobCatalog(configuration.catalog_path) as catalog:
-            self.assertEqual(catalog.job_with_id(job_id).state, JobState.ENCODED)
+
+    def test_an_absent_library_holds_the_job_rather_than_losing_it(self):
+        self._write_configuration_file()
+        job_id = self._seed_job()
+        shutil.rmtree(self.library_root)
+
+        exit_code, output = self._run_encode()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("not mounted", output)
+        self.assertEqual(self._state_of(job_id), JobState.ENCODED)
+
+    def test_an_absent_library_names_the_path_it_looked_for(self):
+        """A plugged-in drive with no library folder looks the same as no drive."""
+        self._write_configuration_file()
+        self._seed_job()
+        shutil.rmtree(self.library_root)
+
+        _exit_code, output = self._run_encode()
+
+        self.assertIn(str(self.library_root), output)
+
+    def test_work_left_over_from_a_held_delivery_goes_out_on_the_next_run(self):
+        self._write_configuration_file()
+        job_id = self._seed_job()
+        shutil.rmtree(self.library_root)
+        self._run_encode()
+
+        self.library_root.mkdir()
+        _exit_code, output = self._run_encode()
+
+        self.assertIn("Nothing waiting to be transcoded.", output)
+        self.assertEqual(self._state_of(job_id), JobState.DELIVERED)
 
     def test_a_missing_handbrake_is_reported_rather_than_crashing(self):
         self._write_configuration_file()

@@ -119,7 +119,7 @@ Queue
 | `watch` | Rips every disc put in the drive, until stopped |
 | `rip` | Rips the disc in the drive, records the job, ejects the disc |
 | `scan` | Says what the disc is and lists its titles, without ripping |
-| `encode` | Transcodes the ripped backlog. `--one` does a single job, `--forever` keeps going |
+| `encode` | Transcodes the ripped backlog and delivers it. `--one` does a single job, `--forever` keeps going |
 | `status` | Both folders, free space on each, backlog size, queue depth |
 | `queue` | Lists the discs still on their way through, with size and state |
 | `attention` | Lists jobs that stopped: failed, or needing a decision |
@@ -196,9 +196,13 @@ and TVmaze searches is still on the list below.
 ./media-server encode
 ```
 
-That works through everything ripped, one job at a time, and writes the output
-into staging already shaped like the library. `--one` does a single job if you
-would rather not commit the machine to the whole queue.
+That works through everything ripped, one job at a time, writes the output into
+staging already shaped like the library, and then moves it onto the library
+drive. `--one` does a single job if you would rather not commit the machine to
+the whole queue.
+
+The delivery step runs even when there was nothing to transcode, so a run that
+was held because the drive was unplugged goes out the next time you ask.
 
 ```
 Transcoding The Matrix
@@ -208,8 +212,9 @@ Transcoding Firefly
   wrote TV/Firefly/Season 01/Firefly - s01e02.mp4
 ```
 
-Then `./media-server deliver` moves it all onto the external drive and clears
-staging.
+`./media-server deliver` does the moving on its own if you ever want it
+separately, which is mostly useful for flushing a backlog after plugging the
+drive back in.
 
 Expect **two to three hours per Blu-ray** on an 8-core M1 Pro. That is the
 whole reason ripping and transcoding are separate: the disc came out hours ago.
@@ -333,7 +338,13 @@ something again, `forget` its job id first.
 
 When a transcode finishes and the library drive is not mounted, nothing fails.
 The job stays in `encoded` and is retried on the next delivery pass. Plug the
-drive back in, run `deliver`, and the backlog flushes.
+drive back in, run `encode` or `deliver`, and the backlog flushes.
+
+"Not mounted" means the whole of `LIBRARY_ROOT` is not there as a directory,
+not just the volume. A drive that is plugged in but has no library folder on it
+yet is indistinguishable from an absent one, so the path being looked for is
+printed alongside the message. If it is a folder you have not created yet,
+`mkdir -p` it once and the holds clear.
 
 ### A crash cannot leave a half-file in your library
 
