@@ -21,9 +21,15 @@ class FakeMakeMkvCommand:
     disc with one bad episode behaves in practice.
     """
 
-    def __init__(self, scan_output: str = "", unreadable_title_ids: tuple[int, ...] = ()):
+    def __init__(
+        self,
+        scan_output: str = "",
+        unreadable_title_ids: tuple[int, ...] = (),
+        rip_output: str = "",
+    ):
         self.scan_output = scan_output
         self.unreadable_title_ids = unreadable_title_ids
+        self.rip_output = rip_output
         self.scanned_count = 0
         self.ripped_title_ids: list[int] = []
 
@@ -41,10 +47,10 @@ class FakeMakeMkvCommand:
         self.ripped_title_ids.append(title_id)
 
         if title_id in self.unreadable_title_ids:
-            return CommandResult(exit_code=1, output="")
+            return CommandResult(exit_code=1, output=self.rip_output)
 
         destination.mkdir(parents=True, exist_ok=True)
         (destination / f"title_t{title_id:02d}.mkv").write_bytes(
             b"m" * RIPPED_FILE_BYTES
         )
-        return CommandResult(exit_code=0, output="")
+        return CommandResult(exit_code=0, output=self.rip_output)

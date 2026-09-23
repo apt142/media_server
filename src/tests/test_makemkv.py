@@ -122,16 +122,46 @@ class RippingTests(unittest.TestCase):
     def test_a_ripped_title_reports_the_file_it_produced(self):
         makemkv = MakeMkv(run_command=FakeMakeMkvCommand())
 
-        ripped_file = makemkv.rip_title(0, self.destination)
+        rip_result = makemkv.rip_title(0, self.destination)
 
-        self.assertIsNotNone(ripped_file)
-        self.assertTrue(ripped_file.is_file())
-        self.assertEqual(ripped_file.suffix, ".mkv")
+        self.assertTrue(rip_result.is_ripped)
+        self.assertTrue(rip_result.ripped_file.is_file())
+        self.assertEqual(rip_result.ripped_file.suffix, ".mkv")
 
     def test_a_title_that_will_not_decrypt_reports_nothing(self):
         makemkv = MakeMkv(run_command=FakeMakeMkvCommand(unreadable_title_ids=(0,)))
 
-        self.assertIsNone(makemkv.rip_title(0, self.destination))
+        rip_result = makemkv.rip_title(0, self.destination)
+
+        self.assertFalse(rip_result.is_ripped)
+        self.assertIsNone(rip_result.ripped_file)
+
+    def test_the_reason_a_title_refused_comes_back_with_the_refusal(self):
+        fake_command = FakeMakeMkvCommand(
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.REFUSED_TITLE_OUTPUT,
+        )
+        makemkv = MakeMkv(run_command=fake_command)
+
+        rip_result = makemkv.rip_title(0, self.destination)
+
+        self.assertIn(
+            "Failed to save title 0 to file title_t00.mkv", rip_result.messages
+        )
+
+    def test_an_expired_key_is_carried_back_in_makemkvs_own_words(self):
+        fake_command = FakeMakeMkvCommand(
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.EXPIRED_KEY_OUTPUT,
+        )
+        makemkv = MakeMkv(run_command=fake_command)
+
+        rip_result = makemkv.rip_title(0, self.destination)
+
+        self.assertIn(
+            "This application version is too old and the evaluation period has expired",
+            rip_result.messages,
+        )
 
     def test_scanning_hands_back_a_parsed_disc(self):
         fake_command = FakeMakeMkvCommand(makemkv_fixtures.FILM_BLURAY)

@@ -60,6 +60,18 @@ DVD_MEDIA_KIND = "dvd"
 
 
 @dataclass(frozen=True)
+class RipResult:
+    """What decrypting one title produced, and what MakeMKV said about it."""
+
+    ripped_file: Path | None = None
+    messages: tuple[str, ...] = ()
+
+    @property
+    def is_ripped(self) -> bool:
+        return self.ripped_file is not None
+
+
+@dataclass(frozen=True)
 class DiscTitle:
     """One title on the disc: a film, an episode, a trailer, a menu loop."""
 
@@ -203,15 +215,16 @@ class MakeMkv:
         result = self.run_command(["-r", MINIMUM_LENGTH_ARGUMENT, "info", DISC_ARGUMENT])
         return parse_disc_scan(result.output)
 
-    def rip_title(self, title_id: int, destination: Path) -> Path | None:
-        """Decrypt one title into a folder, returning the file it produced.
+    def rip_title(self, title_id: int, destination: Path) -> RipResult:
+        """Decrypt one title into a folder, and say how it went.
 
-        None means MakeMKV wrote nothing usable. That is reported rather than
-        raised because a TV disc should carry on to the next episode when one
-        title refuses to decrypt.
+        A failure is reported rather than raised because a TV disc should carry
+        on to the next episode when one title refuses to decrypt. MakeMKV's own
+        messages come back with the result: the exit code says almost nothing,
+        and the reason a title would not decrypt is only ever in the MSG lines.
         """
         destination.mkdir(parents=True, exist_ok=True)
-        self.run_command(
+        result = self.run_command(
             [
                 MINIMUM_LENGTH_ARGUMENT,
                 "-r",
@@ -222,7 +235,10 @@ class MakeMkv:
                 str(destination),
             ]
         )
-        return largest_mkv_in(destination)
+        return RipResult(
+            ripped_file=largest_mkv_in(destination),
+            messages=tuple(parse_messages(result.output)),
+        )
 
 
 def largest_mkv_in(directory: Path) -> Path | None:

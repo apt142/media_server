@@ -22,7 +22,7 @@ from .disc_classifier import (
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
 from .job_catalog import JobCatalog, RippedDisc
-from .makemkv import DiscScan, DiscTitle, MakeMkv
+from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult
 from .volume_space import space_at
 
 RAW_FOLDER_NAME = "raw"
@@ -144,7 +144,8 @@ class RipWorker:
             return RipOutcome(
                 message=(
                     "MakeMKV produced no usable files. Its messages are above; "
-                    "a missing key or an unreadable disc is the usual cause."
+                    "an expired key, missing Java on a Blu-ray, or an "
+                    "unreadable disc are the usual causes."
                 )
             )
 
@@ -176,14 +177,24 @@ class RipWorker:
             self.announce(f"Reading {title.describe()}")
             title_path = staged_path / f"title-{title.title_id:02d}"
 
-            ripped_file = self.makemkv.rip_title(title.title_id, title_path)
-            if ripped_file is None:
-                self.announce(f"  title {title.title_id} would not decrypt, skipping it")
+            rip_result = self.makemkv.rip_title(title.title_id, title_path)
+            if not rip_result.is_ripped:
+                self._announce_refusal(title, rip_result)
                 shutil.rmtree(title_path, ignore_errors=True)
                 continue
-            ripped_files.append(ripped_file)
+            ripped_files.append(rip_result.ripped_file)
 
         return ripped_files
+
+    def _announce_refusal(self, title: DiscTitle, rip_result: RipResult) -> None:
+        """Pass on what MakeMKV said about a title it would not decrypt.
+
+        Without this the failure is just "would not decrypt", which is the one
+        thing the person already knows. The reason is always in the messages.
+        """
+        self.announce(f"  title {title.title_id} would not decrypt, skipping it")
+        for message in rip_result.messages:
+            self.announce(f"    {message}")
 
     def _ripped_disc_for(
         self,

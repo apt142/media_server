@@ -32,9 +32,14 @@ class RipWorkerTestCase(unittest.TestCase):
         self.announced_lines: list[str] = []
 
     def _worker(
-        self, scan_output: str, unreadable_title_ids: tuple[int, ...] = ()
+        self,
+        scan_output: str,
+        unreadable_title_ids: tuple[int, ...] = (),
+        rip_output: str = "",
     ) -> RipWorker:
-        self.fake_command = FakeMakeMkvCommand(scan_output, unreadable_title_ids)
+        self.fake_command = FakeMakeMkvCommand(
+            scan_output, unreadable_title_ids, rip_output
+        )
         return RipWorker(
             configuration=self.configuration,
             catalog=self.catalog,
@@ -168,6 +173,32 @@ class UnreadableDiscTests(RipWorkerTestCase):
         self.assertFalse(outcome.is_ripped)
         self.assertEqual(self.catalog.all_jobs(), [])
         self.assertIn("no usable files", outcome.message)
+
+    def test_what_makemkv_said_about_a_refusal_is_passed_on(self):
+        """The failure message promises the reason is above it, so it has to be."""
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.REFUSED_TITLE_OUTPUT,
+        )
+
+        worker.rip_disc_in_drive()
+
+        self.assertIn(
+            "    Failed to save title 0 to file title_t00.mkv", self.announced_lines
+        )
+
+    def test_an_expired_key_says_so_rather_than_just_would_not_decrypt(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.EXPIRED_KEY_OUTPUT,
+        )
+
+        worker.rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("evaluation period has expired", announced_output)
 
     def test_a_failed_rip_leaves_nothing_behind_in_staging(self):
         worker = self._worker(makemkv_fixtures.FILM_BLURAY, unreadable_title_ids=(0,))

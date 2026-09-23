@@ -11,7 +11,7 @@ from .encode_worker import EncodeOutcome, EncodeWorker
 from .job_catalog import Job, JobCatalog, JobState, RippedDisc
 from .launch_agents import AgentInstaller, LaunchAgent
 from .library_delivery import DeliveryReport, LibraryDelivery
-from .makemkv import DiscScan, DiscTitle, MakeMkv
+from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult
 from .rip_worker import RipOutcome, RipWorker
 from .volume_space import VolumeSpace, space_at
 
@@ -37,6 +37,7 @@ __all__ = [
     "LibraryDelivery",
     "MakeMkv",
     "RipOutcome",
+    "RipResult",
     "RipWorker",
     "RippedDisc",
     "ServicePass",

@@ -92,3 +92,19 @@ MSG:5010,0,0,"Failed to open disc","Failed to open disc"
 """
 
 NO_DRIVE_RESPONSE = ""
+
+# A title that scanned fine but would not decrypt. The exit code alone does not
+# say why, which is the whole reason these messages are carried back.
+REFUSED_TITLE_OUTPUT = """\
+MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"
+MSG:3007,0,0,"Using direct disc access mode","Using direct disc access mode"
+MSG:2004,0,2,"Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurred while reading '/dev/disk4'","...","..."
+MSG:5003,0,2,"Failed to save title 0 to file title_t00.mkv","Failed to save title %1 to file %2","0","title_t00.mkv"
+"""
+
+# What an expired beta key looks like: the scan works, the decrypt does not.
+EXPIRED_KEY_OUTPUT = """\
+MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"
+MSG:5021,0,0,"This application version is too old and the evaluation period has expired","...","..."
+MSG:5003,0,2,"Failed to save title 0 to file title_t00.mkv","Failed to save title %1 to file %2","0","title_t00.mkv"
+"""
