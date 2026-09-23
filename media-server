@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs the disc pipeline from anywhere, without needing PYTHONPATH set by hand.
+set -euo pipefail
+
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+export PYTHONPATH="${SCRIPT_DIRECTORY}/src${PYTHONPATH:+:${PYTHONPATH}}"
+exec python3 -m media_server "$@"
