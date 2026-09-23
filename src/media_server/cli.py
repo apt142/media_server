@@ -12,12 +12,17 @@ from .configuration import (
     Configuration,
 )
 from .disc_classifier import DiscClassifier
+from .disc_watcher import DiscWatcher, WatchSettings
+from .encode_service import EncodeService
 from .encode_worker import EncodeWorker, is_handbrake_installed
 from .job_catalog import JobCatalog, JobState
+from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
 from .makemkv import MakeMkv
 from .rip_worker import RipWorker
 from .volume_space import LOW_SPACE_GIGABYTES, VOLUME_MISSING, VolumeSpace, space_at
+
+LAUNCHER_PATH = Path(__file__).resolve().parents[2] / "media-server"
 
 SAMPLE_CONFIGURATION = f"""\
 # Where rips are staged while they wait to be transcoded. This disk takes the
@@ -252,6 +257,28 @@ class PipelineCommands:
             print(outcome.message)
         return 0
 
+    def watch_drive(self, maximum_queue_depth: int | None) -> int:
+        """Poll the drive and rip every disc that goes into it."""
+        if not MakeMkv().is_installed():
+            print(MAKEMKV_MISSING_MESSAGE)
+            return 1
+
+        watcher = DiscWatcher(
+            self.configuration,
+            self.catalog,
+            settings=WatchSettings(maximum_queue_depth=maximum_queue_depth),
+        )
+        return run_until_interrupted(watcher.watch_forever)
+
+    def serve_encoder(self) -> int:
+        """Transcode and deliver on a loop, rather than once and out."""
+        if not is_handbrake_installed():
+            print(HANDBRAKE_MISSING_MESSAGE)
+            return 1
+
+        service = EncodeService(self.configuration, self.catalog)
+        return run_until_interrupted(service.serve_forever)
+
     def deliver_waiting_jobs(self) -> int:
         """Move everything that finished transcoding onto the library drive."""
         if not self.has_catalog:
@@ -286,6 +313,16 @@ class PipelineCommands:
         print(f"{STAGING_ROOT_KEY}={self.configuration.staging_root}")
         print(f"{LIBRARY_ROOT_KEY}={self.configuration.library_root}")
         return 0
+
+
+def run_until_interrupted(serve) -> int:
+    """Run a service loop, treating Ctrl-C as a clean stop rather than a crash."""
+    try:
+        serve()
+    except KeyboardInterrupt:
+        print()
+        print("Stopped. Anything already ripped is still in the queue.")
+    return 0
 
 
 def write_sample_configuration(
@@ -352,13 +389,30 @@ def build_argument_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("rip", help="Rip the disc in the drive, then eject it")
     subcommands.add_parser("scan", help="Say what the disc is, without ripping it")
 
+    watch_command = subcommands.add_parser(
+        "watch", help="Rip every disc put in the drive, until stopped"
+    )
+    watch_command.add_argument(
+        "--max-discs",
+        type=int,
+        default=None,
+        dest="maximum_queue_depth",
+        help="Hold new discs once this many are already waiting to transcode",
+    )
+
     encode_command = subcommands.add_parser(
         "encode", help="Transcode the ripped backlog into playable files"
     )
-    encode_command.add_argument(
+    encode_scope = encode_command.add_mutually_exclusive_group()
+    encode_scope.add_argument(
         "--one",
         action="store_true",
         help="Transcode only the next job, rather than the whole queue",
+    )
+    encode_scope.add_argument(
+        "--forever",
+        action="store_true",
+        help="Keep transcoding and delivering as new discs arrive, until stopped",
     )
     subcommands.add_parser("status", help="Folders, disk space, and queue depth")
     subcommands.add_parser("queue", help="List the discs still on their way through")
@@ -367,6 +421,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("config", help="Show the resolved folders")
     subcommands.add_parser(
         "init-config", help="Write a starter configuration file to edit"
+    )
+    subcommands.add_parser(
+        "install-agents", help="Run the watcher and encoder as background services"
+    )
+    subcommands.add_parser(
+        "uninstall-agents", help="Stop the background services and remove them"
     )
 
     forget_command = subcommands.add_parser(
@@ -382,6 +442,10 @@ def main(argument_values: list[str] | None = None) -> int:
 
     if arguments.command == "init-config":
         return write_sample_configuration(arguments.config, configuration)
+    if arguments.command == "install-agents":
+        return AgentInstaller(LAUNCHER_PATH).install()
+    if arguments.command == "uninstall-agents":
+        return AgentInstaller(LAUNCHER_PATH).uninstall()
 
     commands = PipelineCommands(configuration)
     try:
@@ -395,7 +459,11 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
         return commands.rip_disc_in_drive()
     if arguments.command == "scan":
         return commands.scan_disc()
+    if arguments.command == "watch":
+        return commands.watch_drive(arguments.maximum_queue_depth)
     if arguments.command == "encode":
+        if arguments.forever:
+            return commands.serve_encoder()
         return commands.encode_queue(arguments.one)
     if arguments.command == "status":
         return commands.show_status()

@@ -289,5 +289,39 @@ class CatalogPersistenceTests(JobCatalogTestCase):
             )
 
 
+class SharingTheCatalogBetweenProcessesTests(JobCatalogTestCase):
+    """The watcher and the encoder run at once against this one file."""
+
+    def _journal_mode(self, catalog: JobCatalog) -> str:
+        return catalog._connection.execute("PRAGMA journal_mode").fetchone()[0]
+
+    def test_reading_does_not_wait_on_writing(self):
+        self.assertEqual(self._journal_mode(self.catalog), "wal")
+
+    def test_a_catalog_opened_a_second_time_agrees_on_the_mode(self):
+        with JobCatalog(self.catalog.catalog_path) as second_catalog:
+            self.assertEqual(self._journal_mode(second_catalog), "wal")
+
+    def test_one_connection_sees_what_another_committed(self):
+        job_id = self._record_disc()
+
+        with JobCatalog(self.catalog.catalog_path) as watcher_catalog:
+            self.assertEqual(
+                watcher_catalog.job_with_id(job_id).disc_label, self.DISC_LABEL
+            )
+
+    def test_a_disc_recorded_mid_encode_is_there_to_be_claimed(self):
+        """A disc ripped while the encoder is working joins the queue it is working."""
+        encoder_catalog = JobCatalog(self.catalog.catalog_path)
+        self.addCleanup(encoder_catalog.close)
+        self._record_disc("FIRST_DISC")
+        encoder_catalog.claim_next_for_encoding()
+
+        self._record_disc("SECOND_DISC")
+
+        claimed_next = encoder_catalog.claim_next_for_encoding()
+        self.assertEqual(claimed_next.disc_label, "SECOND_DISC")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -116,9 +116,10 @@ Queue
 
 | Command | What it does |
 |---|---|
+| `watch` | Rips every disc put in the drive, until stopped |
 | `rip` | Rips the disc in the drive, records the job, ejects the disc |
 | `scan` | Says what the disc is and lists its titles, without ripping |
-| `encode` | Transcodes the ripped backlog. `--one` does a single job |
+| `encode` | Transcodes the ripped backlog. `--one` does a single job, `--forever` keeps going |
 | `status` | Both folders, free space on each, backlog size, queue depth |
 | `queue` | Lists the discs still on their way through, with size and state |
 | `attention` | Lists jobs that stopped: failed, or needing a decision |
@@ -126,6 +127,8 @@ Queue
 | `forget <id>` | Drops a job so its disc stops counting as a duplicate |
 | `config` | Shows the resolved folders |
 | `init-config` | Writes a starter config file |
+| `install-agents` | Runs `watch` and `encode --forever` as background services |
+| `uninstall-agents` | Stops those services and removes them |
 
 All of them run through `./media-server` at the repo root, which is a thin
 wrapper around `python3 -m media_server`. Nothing needs installing and there
@@ -237,6 +240,80 @@ is worked out when the disc is ripped, from what the catalog has already
 recorded for that show and season, and stored on the job. So disc one produces
 `s01e01`–`s01e04` and disc two carries on at `s01e05` without being told.
 
+## Running it hands-off
+
+The commands above all do one thing and stop. Two of them can instead be left
+running, which is what turns this from a set of tools into the thing it is
+meant to be: put a disc in, wait for it to come out, put the next one in.
+
+```sh
+./media-server install-agents
+```
+
+That writes two launchd agents, starts them, and starts them again at every
+login. From then on nothing needs typing.
+
+| Agent | Runs | Does |
+|---|---|---|
+| `com.mediaserver.watcher` | `watch` | Rips each disc as it goes in, then ejects it |
+| `com.mediaserver.encoder` | `encode --forever` | Transcodes the backlog and delivers it |
+
+Watch them work:
+
+```sh
+tail -f ~/Library/Logs/media-server/watcher.log
+tail -f ~/Library/Logs/media-server/encoder.log
+```
+
+`./media-server uninstall-agents` stops both. Every command still works by
+hand whether the agents are running or not.
+
+### Why agents rather than daemons
+
+A `LaunchDaemon` starts at boot with no logged-in user. MakeMKV wants a user
+session to run in, so a daemon would start dependably and then fail to rip
+anything. A `LaunchAgent` starts at login instead, which on a machine that logs
+itself in comes to the same thing without the problem.
+
+Two details the agents carry that are easy to miss when writing a plist by
+hand. Homebrew is put on the `PATH` explicitly, because launchd starts agents
+with a bare path that has no `/opt/homebrew/bin` in it and `HandBrakeCLI`
+would be missing even though it runs fine from a terminal. And the encoder runs
+under `caffeinate -i`, because a Blu-ray takes two to three hours and an idle
+Mac will otherwise go to sleep in the middle of one.
+
+### The watcher only acts on a disc arriving
+
+A rip starts when the drive goes from empty to holding something, not whenever
+a disc happens to be present. That distinction matters: the rip worker ejects
+when it finishes, so if an eject ever failed, a watcher keyed on presence would
+rip the same disc over and over. Keyed on the change, a stuck disc is ignored
+until a person takes it out.
+
+The drive is given fifteen seconds to spin up before anything reads it.
+`drutil` reports a disc the moment the tray closes, well before the table of
+contents is readable, and scanning that early fails on a disc that is perfectly
+fine a few seconds later.
+
+### A disc that fails stays in the drive
+
+A disc popping out means the pipeline is finished with it. Ejecting a disc that
+failed would use the same signal for two opposite outcomes, so a disc that
+needs a person stays where it can be seen. The reason is in the log and in
+`./media-server attention`.
+
+### The watcher stops accepting discs before staging fills
+
+Ripping outruns transcoding by four or five to one, so a stack of discs will
+fill the staging disk long before the encoder catches up. When free space drops
+below 60 GB, the disc in the drive is held rather than refused: it stays put and
+is picked up on a later pass, once the encoder has drained some of the backlog.
+A full disk costs you time instead of attention.
+
+`watch --max-discs 5` adds a second limit on the number of discs waiting,
+which is the more predictable of the two if you would rather not think in
+gigabytes.
+
 ## Things worth knowing
 
 ### The same disc twice is ignored
@@ -278,6 +355,15 @@ never present a mountable volume — so the discs you most want to catch would g
 unnoticed. `drutil status` reports what the hardware sees whether or not the
 disc can be mounted.
 
+### The catalog is safe to share
+
+The watcher and the encoder are separate processes writing to the same SQLite
+file, and you will run `status` against it while both are working. Claiming a
+job is wrapped in an immediate transaction, so two encoders can never take the
+same disc, and the database is opened in write-ahead logging mode so a read
+never waits on a write. An existing catalog is switched over the first time it
+is opened.
+
 ### Only one transcode at a time
 
 HandBrake already saturates every core. Running two encodes in parallel gains
@@ -294,14 +380,18 @@ src/
     makemkv.py           reading discs and decrypting titles off them
     disc_classifier.py   film or show, and what the label says
     rip_worker.py        one disc: scan, rip, record, eject
+    disc_watcher.py      the loop that notices a disc and starts a rip
     encode_settings.py   what to ask HandBrake for, and why
     encode_worker.py     one job: transcode into the library shape
+    encode_service.py    the loop that drains the queue and delivers
     library_layout.py    where a finished file belongs, Plex-style
     file_names.py        names that survive a filesystem and an SMB share
     disc_drive.py        what is in the drive, and ejecting it
     disc_fingerprint.py  recognising a disc that has been seen before
     library_delivery.py  the crash-safe move to the library drive
     volume_space.py      free space on the disks being written to
+    launch_agents.py     the launchd plists and installing them
+    service_log.py       service output, without repeating itself
     cli.py               the commands above
   tests/
 ```
@@ -318,12 +408,14 @@ folders are temporary, so the suite runs in well under a second.
 
 ## Not built yet
 
-The foundation above is done and tested. Still to come:
+The pipeline above is done and tested. Still to come:
 
-- **Disc watcher** — poll the drive and start a rip on insertion, with a
-  backpressure limit so it stops accepting discs when staging gets full.
 - **Identification** — wire in the existing `movie_lookup.py` and
   `show_lookup.py`, including working out which disc of a split film you just
   put in by comparing the runtime on the disc against the film's known runtime.
-- **launchd agents** — so the watcher and the encoder start at login and stay
-  running.
+  Until that lands, titles come from the disc label and films carry no year,
+  so `FELLOWSHIP_EE_D2` arrives in the library as "Fellowship" rather than
+  something Plex can match.
+
+Worth repeating: every test here runs against stand-ins for MakeMKV, HandBrake
+and the drive. None of it has met a real disc yet.

@@ -16,7 +16,8 @@ from media_server.job_catalog import JobCatalog, JobState, RippedDisc
 from media_server.encode_worker import EncodeWorker
 from media_server.makemkv import MakeMkv
 from tests import makemkv_fixtures
-from tests.fake_makemkv import FakeMakeMkvCommand, RecordingDiscDrive
+from tests.fake_drive import RecordingDiscDrive
+from tests.fake_makemkv import FakeMakeMkvCommand
 from tests.test_encode_worker import FakeHandBrake
 
 

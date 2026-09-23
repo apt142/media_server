@@ -48,17 +48,3 @@ class FakeMakeMkvCommand:
             b"m" * RIPPED_FILE_BYTES
         )
         return CommandResult(exit_code=0, output="")
-
-
-class RecordingDiscDrive:
-    """A drive that only remembers whether it was asked to eject."""
-
-    def __init__(self):
-        self.eject_count = 0
-
-    def eject(self) -> None:
-        self.eject_count += 1
-
-    @property
-    def has_ejected(self) -> bool:
-        return self.eject_count > 0

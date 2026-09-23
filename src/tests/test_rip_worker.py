@@ -10,7 +10,8 @@ from media_server.file_names import safe_file_component
 from media_server.rip_worker import RipWorker
 from media_server.volume_space import VolumeSpace
 from tests import makemkv_fixtures
-from tests.fake_makemkv import FakeMakeMkvCommand, RecordingDiscDrive
+from tests.fake_drive import RecordingDiscDrive
+from tests.fake_makemkv import FakeMakeMkvCommand
 
 
 class RipWorkerTestCase(unittest.TestCase):

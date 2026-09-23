@@ -174,7 +174,23 @@ class JobCatalog:
         self.catalog_path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(catalog_path, isolation_level=None)
         self._connection.row_factory = sqlite3.Row
+        self._use_write_ahead_logging()
         self._create_schema()
+
+    def _use_write_ahead_logging(self) -> None:
+        """Let reading and writing happen at the same time.
+
+        The watcher and the encoder are separate processes sharing this one
+        file, and a person runs ``status`` against it while both are working.
+        Under SQLite's default rollback journal a writer locks everyone else
+        out for the length of its commit; with write-ahead logging readers see
+        the last committed state instead and never wait.
+
+        Network filesystems do not support it. SQLite reports back the mode it
+        settled on rather than failing, so a staging folder on a share quietly
+        keeps the old behaviour rather than refusing to open.
+        """
+        self._connection.execute("PRAGMA journal_mode=WAL")
 
     def _create_schema(self) -> None:
         for statement in SCHEMA_STATEMENTS:
