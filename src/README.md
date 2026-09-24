@@ -109,8 +109,14 @@ Backlog
 
 Queue
     2  staged        ripped, waiting to be transcoded
+       #7    Iron Man 2 And Thor
+       #8    The Matrix
     1  encoded       transcoded, waiting for the library drive
+       #6    Knives Out
 ```
+
+Delivered films are listed too, but only the last five of them. That pile only
+ever grows, and status is for seeing what is moving right now.
 
 ## Commands
 

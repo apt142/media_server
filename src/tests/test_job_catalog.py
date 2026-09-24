@@ -147,17 +147,32 @@ class JobProgressTests(JobCatalogTestCase):
         self.assertEqual(job.state, JobState.FAILED)
         self.assertEqual(job.failure_reason, "MakeMKV produced no output")
 
-    def test_counts_report_the_depth_of_each_state(self):
+    def test_grouping_reports_the_depth_of_each_state(self):
         self._record_disc(disc_label="FIRST_DISC")
         self._record_disc(disc_label="SECOND_DISC")
         claimed_job = self.catalog.claim_next_for_encoding()
         self.catalog.mark_encoded(claimed_job.job_id, self.staging_root / "encoded")
 
-        counts = self.catalog.count_by_state()
+        grouped_jobs = self.catalog.jobs_by_state()
 
-        self.assertEqual(counts[JobState.STAGED], 1)
-        self.assertEqual(counts[JobState.ENCODED], 1)
-        self.assertNotIn(JobState.FAILED, counts)
+        self.assertEqual(len(grouped_jobs[JobState.STAGED]), 1)
+        self.assertEqual(len(grouped_jobs[JobState.ENCODED]), 1)
+        self.assertNotIn(JobState.FAILED, grouped_jobs)
+
+    def test_grouping_says_which_disc_is_in_which_state(self):
+        self._record_disc(disc_label="FIRST_DISC")
+        self._record_disc(disc_label="SECOND_DISC")
+        claimed_job = self.catalog.claim_next_for_encoding()
+        self.catalog.mark_encoded(claimed_job.job_id, self.staging_root / "encoded")
+
+        grouped_jobs = self.catalog.jobs_by_state()
+
+        self.assertEqual(
+            [job.disc_label for job in grouped_jobs[JobState.ENCODED]], ["FIRST_DISC"]
+        )
+        self.assertEqual(
+            [job.disc_label for job in grouped_jobs[JobState.STAGED]], ["SECOND_DISC"]
+        )
 
 
 class JobDescriptionTests(JobCatalogTestCase):

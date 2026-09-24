@@ -15,7 +15,7 @@ from .disc_classifier import DiscClassifier
 from .disc_watcher import DiscWatcher, WatchSettings
 from .encode_service import EncodeService
 from .encode_worker import EncodeWorker, is_handbrake_installed
-from .job_catalog import JobCatalog, JobState
+from .job_catalog import Job, JobCatalog, JobState
 from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
 from .makemkv import MakeMkv
@@ -35,6 +35,9 @@ SAMPLE_CONFIGURATION = f"""\
 """
 
 QUEUE_TITLE_WIDTH = 40
+
+# How many delivered films status names before it stops listing them.
+DELIVERED_JOBS_SHOWN = 5
 
 MAKEMKV_MISSING_MESSAGE = (
     "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
@@ -139,16 +142,28 @@ class PipelineCommands:
         )
 
     def _print_queue(self) -> None:
-        counts = self.catalog.count_by_state()
-        if not counts:
+        jobs_by_state = self.catalog.jobs_by_state()
+        if not jobs_by_state:
             print("Queue is empty.")
             return
 
         print("Queue")
         for state, description in STATE_DESCRIPTIONS.items():
-            job_count = counts.get(state, 0)
-            if job_count:
-                print(f"  {job_count:>3}  {state:<13} {description}")
+            jobs_in_state = jobs_by_state.get(state, [])
+            if jobs_in_state:
+                self._print_state_group(state, description, jobs_in_state)
+
+    def _print_state_group(
+        self, state: JobState, description: str, jobs_in_state: list[Job]
+    ) -> None:
+        print(f"  {len(jobs_in_state):>3}  {state:<13} {description}")
+        listed_jobs = jobs_worth_listing(state, jobs_in_state)
+        for job in listed_jobs:
+            print(f"       #{job.job_id:<4} {job.describe_title()}")
+
+        unlisted_count = len(jobs_in_state) - len(listed_jobs)
+        if unlisted_count:
+            print(f"       and {unlisted_count} more")
 
     def show_queue(self) -> int:
         """List the discs still on their way through, oldest first."""
@@ -362,6 +377,17 @@ def print_title_table(disc_scan) -> None:
             f"{describe_bytes(title.size_bytes):<9} {title.source:<14} "
             f"{main_feature_flag:<6} {title.name}"
         )
+
+
+def jobs_worth_listing(state: JobState, jobs_in_state: list[Job]) -> list[Job]:
+    """Everything still moving, but only the recent end of what is finished.
+
+    The delivered pile only ever grows. Someone checking status wants to see
+    what is in flight, not to scroll past their whole library to reach it.
+    """
+    if state == JobState.DELIVERED:
+        return jobs_in_state[-DELIVERED_JOBS_SHOWN:]
+    return jobs_in_state
 
 
 def fit_to_width(text: str, width: int) -> str:

@@ -7,7 +7,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from media_server.cli import describe_bytes, fit_to_width, main
+from media_server.cli import (
+    DELIVERED_JOBS_SHOWN,
+    describe_bytes,
+    fit_to_width,
+    main,
+)
 from media_server.configuration import (
     LIBRARY_ROOT_KEY,
     STAGING_ROOT_KEY,
@@ -138,6 +143,79 @@ class StatusCommandTests(CommandLineTestCase):
         _exit_code, output = self._run_command("status")
 
         self.assertIn("not available", output)
+
+
+class StatusListingTests(CommandLineTestCase):
+    """Status names the films in each state, not just how many there are."""
+
+    def _record_film(self, title: str, state: JobState = JobState.STAGED) -> None:
+        configuration = Configuration(
+            staging_root=self.staging_root, library_root=self.library_root
+        )
+        raw_path = self.staging_root / "raw" / title.replace(" ", "_")
+        raw_path.mkdir(parents=True)
+
+        with JobCatalog(configuration.catalog_path) as catalog:
+            job_id = catalog.record_ripped_disc(
+                RippedDisc(
+                    disc_label=title.upper().replace(" ", "_"),
+                    media_kind="film",
+                    staged_path=raw_path,
+                    title=title,
+                )
+            )
+            if state == JobState.DELIVERED:
+                catalog.mark_delivered(job_id)
+            if state == JobState.FAILED:
+                catalog.mark_failed(job_id, "the disc would not decrypt")
+
+    def test_names_every_film_waiting_to_be_transcoded(self):
+        self._write_configuration_file()
+        self._record_film("Iron Man")
+        self._record_film("Thor")
+
+        _exit_code, output = self._run_command("status")
+
+        self.assertIn("2  staged", output)
+        self.assertIn("Iron Man", output)
+        self.assertIn("Thor", output)
+
+    def test_a_film_is_listed_under_the_state_it_reached(self):
+        self._write_configuration_file()
+        self._record_film("Iron Man", state=JobState.FAILED)
+        self._record_film("Thor")
+
+        _exit_code, output = self._run_command("status")
+
+        self.assertIn("staged        ripped, waiting to be transcoded\n"
+                      "       #2    Thor", output)
+        self.assertIn("failed        failed, needs attention\n"
+                      "       #1    Iron Man", output)
+
+    def test_a_film_is_named_by_its_disc_label_when_it_has_no_title(self):
+        self._write_configuration_file()
+        self._seed_job()
+
+        _exit_code, output = self._run_command("status")
+
+        self.assertIn("The Matrix (1999)", output)
+
+    def test_an_old_delivered_film_is_counted_rather_than_named(self):
+        self._write_configuration_file()
+        delivered_titles = [f"Film {number}" for number in range(1, 8)]
+        for title in delivered_titles:
+            self._record_film(title, state=JobState.DELIVERED)
+
+        _exit_code, output = self._run_command("status")
+
+        self.assertIn("7  delivered", output)
+        self.assertIn("and 2 more", output)
+        for recent_title in delivered_titles[-DELIVERED_JOBS_SHOWN:]:
+            with self.subTest(title=recent_title):
+                self.assertIn(f"{recent_title}\n", output)
+        for older_title in delivered_titles[:-DELIVERED_JOBS_SHOWN]:
+            with self.subTest(title=older_title):
+                self.assertNotIn(f"{older_title}\n", output)
 
 
 class ConfigCommandTests(CommandLineTestCase):

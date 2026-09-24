@@ -387,12 +387,16 @@ class JobCatalog:
         ).fetchall()
         return [_job_from_row(row) for row in rows]
 
-    def count_by_state(self) -> dict[JobState, int]:
-        """Queue depth per state, for status output."""
-        rows = self._connection.execute(
-            "SELECT state, COUNT(*) AS job_count FROM jobs GROUP BY state"
-        ).fetchall()
-        return {JobState(row["state"]): int(row["job_count"]) for row in rows}
+    def jobs_by_state(self) -> dict[JobState, list[Job]]:
+        """Every job grouped by where it has got to, oldest first within a state.
+
+        Status reports both the depth of each state and what is sitting in it,
+        and those are the same question asked twice, so it asks once.
+        """
+        grouped_jobs: dict[JobState, list[Job]] = {}
+        for job in self.all_jobs():
+            grouped_jobs.setdefault(job.state, []).append(job)
+        return grouped_jobs
 
     def staged_bytes(self) -> int:
         """How much disk the unfinished backlog is holding on to."""
