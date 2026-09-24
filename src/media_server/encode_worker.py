@@ -90,15 +90,6 @@ class EncodeWorker:
 
         return self._encode_files(job, source_files)
 
-    def encode_until_queue_is_empty(self) -> list[EncodeOutcome]:
-        """Work through the whole backlog, one job at a time."""
-        outcomes = []
-        while True:
-            outcome = self.encode_next_job()
-            if not outcome.had_work_to_do:
-                return outcomes
-            outcomes.append(outcome)
-
     def _encode_files(self, job: Job, source_files: list[Path]) -> EncodeOutcome:
         settings = self._settings_for(job)
         encoded_path = self._encoded_path_for(job)

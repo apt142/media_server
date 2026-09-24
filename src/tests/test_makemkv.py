@@ -4,6 +4,7 @@ from pathlib import Path
 
 from media_server.makemkv import (
     MakeMkv,
+    collapse_repeated_messages,
     duration_to_seconds,
     largest_mkv_in,
     parse_disc_scan,
@@ -149,6 +150,34 @@ class RippingTests(unittest.TestCase):
             "Failed to save title 0 to file title_t00.mkv", rip_result.messages
         )
 
+    def test_a_scratched_disc_reports_its_errors_once_with_a_count(self):
+        fake_command = FakeMakeMkvCommand(
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.DAMAGED_DISC_OUTPUT,
+        )
+        makemkv = MakeMkv(run_command=fake_command)
+
+        rip_result = makemkv.rip_title(0, self.destination)
+
+        self.assertIn(
+            "Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurred "
+            "while reading '/BDMV/STREAM/00518.m2ts' at offset '3989962752' (\u00d73)",
+            rip_result.messages,
+        )
+
+    def test_the_lines_that_say_what_happened_are_not_buried(self):
+        fake_command = FakeMakeMkvCommand(
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.DAMAGED_DISC_OUTPUT,
+        )
+        makemkv = MakeMkv(run_command=fake_command)
+
+        rip_result = makemkv.rip_title(0, self.destination)
+
+        # Nine lines of output, six of them distinct.
+        self.assertEqual(len(rip_result.messages), 6)
+        self.assertIn("Copy complete. 0 titles saved, 1 failed.", rip_result.messages)
+
     def test_an_expired_key_is_carried_back_in_makemkvs_own_words(self):
         fake_command = FakeMakeMkvCommand(
             unreadable_title_ids=(0,),
@@ -162,6 +191,29 @@ class RippingTests(unittest.TestCase):
             "This application version is too old and the evaluation period has expired",
             rip_result.messages,
         )
+
+    def test_a_message_said_once_is_left_alone(self):
+        self.assertEqual(
+            collapse_repeated_messages(["Failed to open disc"]),
+            ["Failed to open disc"],
+        )
+
+    def test_repeats_are_counted_even_when_they_alternate(self):
+        collapsed = collapse_repeated_messages(
+            ["read error", "io error", "read error", "io error", "read error"]
+        )
+
+        self.assertEqual(collapsed, ["read error (\u00d73)", "io error (\u00d72)"])
+
+    def test_messages_keep_the_order_they_were_first_said_in(self):
+        collapsed = collapse_repeated_messages(
+            ["started", "read error", "read error", "gave up"]
+        )
+
+        self.assertEqual(collapsed, ["started", "read error (\u00d72)", "gave up"])
+
+    def test_nothing_said_collapses_to_nothing(self):
+        self.assertEqual(collapse_repeated_messages([]), [])
 
     def test_scanning_hands_back_a_parsed_disc(self):
         fake_command = FakeMakeMkvCommand(makemkv_fixtures.FILM_BLURAY)

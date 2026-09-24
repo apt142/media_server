@@ -72,27 +72,38 @@ class EncodeService:
             self.sleep(self.poll_seconds)
 
     def run_one_pass(self) -> ServicePass:
-        """Transcode everything waiting, then deliver everything finished."""
-        encoded_count = self._encode_the_backlog()
-        delivered_count = self._deliver_what_is_ready()
-        return ServicePass(
-            encoded_count=encoded_count, delivered_count=delivered_count
-        )
+        """Work the queue, putting each job on the library drive as it finishes.
 
-    def _encode_the_backlog(self) -> int:
-        outcomes = self.encode_worker.encode_until_queue_is_empty()
-        for outcome in outcomes:
+        Delivering after every job rather than after the whole queue is what
+        keeps the staging disk from filling. A finished film is a Blu-ray's
+        worth of space, and holding it until the last disc in the backlog is
+        done can mean hours of a full disk with nothing gained.
+
+        The first delivery happens before any transcoding, because work may
+        already be waiting from a run where the library drive was unplugged.
+        """
+        encoded_count = 0
+        delivered_count = self._deliver_what_is_ready()
+
+        while True:
+            outcome = self.encode_worker.encode_next_job()
+            if not outcome.had_work_to_do:
+                return ServicePass(
+                    encoded_count=encoded_count, delivered_count=delivered_count
+                )
+
             self.log.write(outcome.message)
-        return sum(1 for outcome in outcomes if outcome.is_encoded)
+            if outcome.is_encoded:
+                encoded_count += 1
+            delivered_count += self._deliver_what_is_ready()
 
     def _deliver_what_is_ready(self) -> int:
         self.delivery.remove_abandoned_partial_files()
         report = self.delivery.deliver_waiting_jobs()
 
-        if report.has_deliveries:
-            self.log.write(report.describe())
-            return len(report.delivered_jobs)
+        for delivered_job in report.delivered_jobs:
+            self.log.write(f"delivered {delivered_job.describe_title()}")
 
-        if report.held_jobs:
+        if report.held_jobs and not report.delivered_jobs:
             self.log.write_if_changed(report.describe())
-        return 0
+        return len(report.delivered_jobs)

@@ -196,13 +196,19 @@ and TVmaze searches is still on the list below.
 ./media-server encode
 ```
 
-That works through everything ripped, one job at a time, writes the output into
-staging already shaped like the library, and then moves it onto the library
-drive. `--one` does a single job if you would rather not commit the machine to
-the whole queue.
+That works through everything ripped, one job at a time, writing each into
+staging already shaped like the library and then moving it onto the library
+drive **before starting the next one**. `--one` does a single job if you would
+rather not commit the machine to the whole queue.
 
-The delivery step runs even when there was nothing to transcode, so a run that
-was held because the drive was unplugged goes out the next time you ask.
+Delivering per job rather than at the end of the queue is what keeps the
+staging disk from filling up. A finished Blu-ray is tens of gigabytes, and a
+five-disc backlog takes most of a day to work through; holding all of it until
+the last disc finishes is how a staging disk with room to spare runs out.
+
+Delivery also runs before the first transcode and when there is nothing to
+transcode at all, so work held back by an unplugged drive goes out the next
+time you ask for anything.
 
 ```
 Transcoding The Matrix

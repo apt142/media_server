@@ -133,6 +133,54 @@ class FailedJobTests(EncodeServiceTestCase):
         self.assertEqual(service_pass.encoded_count, 0)
         self.assertIn("HandBrake failed", self.announced_output)
 
+    def test_a_failed_job_does_not_block_the_rest_of_the_queue(self):
+        self._make_the_library_available()
+        self._stage_job(disc_label="BAD_DISC")
+        self._stage_job(disc_label="GOOD_DISC", raw_file_count=2)
+        picky_handbrake = FakeHandBrake(failing_source_names=("title_t01.mkv",))
+
+        service_pass = self._service(picky_handbrake).run_one_pass()
+
+        self.assertEqual(service_pass.encoded_count, 1)
+        self.assertEqual(service_pass.delivered_count, 1)
+
+
+class LibraryWatchingHandBrake(FakeHandBrake):
+    """Notes how much was already in the library each time it was asked to encode."""
+
+    def __init__(self, library_root):
+        super().__init__()
+        self.library_root = library_root
+        self.library_counts: list[int] = []
+
+    def __call__(self, arguments: list[str]) -> int:
+        self.library_counts.append(len(list(self.library_root.rglob("*.mp4"))))
+        return super().__call__(arguments)
+
+
+class StagingIsClearedAsItGoesTests(EncodeServiceTestCase):
+    """Holding finished films until the whole queue is done is what fills the disk."""
+
+    def test_the_first_job_is_delivered_before_the_second_is_transcoded(self):
+        self._make_the_library_available()
+        self._stage_job(disc_label="FIRST_DISC")
+        self._stage_job(disc_label="SECOND_DISC")
+        handbrake = LibraryWatchingHandBrake(self.configuration.library_root)
+
+        self._service(handbrake).run_one_pass()
+
+        self.assertEqual(handbrake.library_counts, [0, 1])
+
+    def test_staging_is_empty_once_the_pass_is_done(self):
+        self._make_the_library_available()
+        self._stage_job(disc_label="FIRST_DISC")
+        self._stage_job(disc_label="SECOND_DISC")
+
+        self._service().run_one_pass()
+
+        self.assertEqual(list(self.configuration.staging_root.rglob("*.mkv")), [])
+        self.assertEqual(list(self.configuration.staging_root.rglob("*.mp4")), [])
+
 
 class ServingUntilStoppedTests(EncodeServiceTestCase):
     def test_the_queue_is_worked_on_every_pass(self):

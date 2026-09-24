@@ -33,6 +33,7 @@ class DeliveryReport:
     delivered_jobs: list[Job] = field(default_factory=list)
     held_jobs: list[Job] = field(default_factory=list)
     is_library_available: bool = True
+    library_root: Path | None = None
 
     @property
     def has_deliveries(self) -> bool:
@@ -40,7 +41,12 @@ class DeliveryReport:
 
     def describe(self) -> str:
         if not self.is_library_available:
-            return f"Library drive is not mounted. Holding {len(self.held_jobs)} finished job(s)."
+            # Naming the path matters: a drive that is plugged in but has no
+            # library folder on it yet looks exactly like one that is absent.
+            return (
+                f"Library drive is not mounted, so {len(self.held_jobs)} finished "
+                f"job(s) are on hold. Looking for {self.library_root}."
+            )
         if not self.delivered_jobs and not self.held_jobs:
             return "Nothing waiting to be delivered."
         return (
@@ -63,6 +69,7 @@ class LibraryDelivery:
             return DeliveryReport(
                 held_jobs=waiting_jobs,
                 is_library_available=False,
+                library_root=self.configuration.library_root,
             )
 
         report = DeliveryReport()

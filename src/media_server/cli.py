@@ -249,22 +249,18 @@ class PipelineCommands:
             print("Nothing has been ripped yet.")
             return 0
 
-        self._transcode(is_encoding_one)
-        return self.deliver_waiting_jobs()
-
-    def _transcode(self, is_encoding_one: bool) -> None:
-        worker = EncodeWorker(self.configuration, self.catalog)
         if is_encoding_one:
-            print(worker.encode_next_job().message)
-            return
+            print(EncodeWorker(self.configuration, self.catalog).encode_next_job().message)
+            return self.deliver_waiting_jobs()
 
-        outcomes = worker.encode_until_queue_is_empty()
-        if not outcomes:
-            print("Nothing waiting to be transcoded.")
-            return
+        return self._work_the_whole_queue()
 
-        for outcome in outcomes:
-            print(outcome.message)
+    def _work_the_whole_queue(self) -> int:
+        """Transcode and deliver together, the same way the service does."""
+        service_pass = EncodeService(self.configuration, self.catalog).run_one_pass()
+        if not service_pass.had_work_to_do:
+            print("Nothing waiting to be transcoded or delivered.")
+        return 0
 
     def watch_drive(self, maximum_queue_depth: int | None) -> int:
         """Poll the drive and rip every disc that goes into it."""
@@ -299,10 +295,6 @@ class PipelineCommands:
         report = delivery.deliver_waiting_jobs()
 
         print(report.describe())
-        if not report.is_library_available:
-            # Naming the path matters: a drive that is plugged in but has no
-            # library folder on it yet looks exactly like one that is absent.
-            print(f"  Looking for {self.configuration.library_root}")
         for job in report.delivered_jobs:
             print(f"  delivered {job.describe_title()}")
         return 0

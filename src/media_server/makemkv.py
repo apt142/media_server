@@ -237,7 +237,7 @@ class MakeMkv:
         )
         return RipResult(
             ripped_file=largest_mkv_in(destination),
-            messages=tuple(parse_messages(result.output)),
+            messages=tuple(collapse_repeated_messages(parse_messages(result.output))),
         )
 
 
@@ -260,7 +260,7 @@ def parse_disc_scan(scan_output: str) -> DiscScan:
         disc_label=choose_disc_label(disc_values),
         media_type=disc_values.get(DISC_TYPE_ATTRIBUTE, ""),
         titles=parse_titles(scan_output),
-        messages=parse_messages(scan_output),
+        messages=collapse_repeated_messages(parse_messages(scan_output)),
     )
 
 
@@ -333,6 +333,27 @@ def parse_messages(scan_output: str) -> list[str]:
         if match:
             messages.append(match.group(1))
     return messages
+
+
+def collapse_repeated_messages(messages: list[str]) -> list[str]:
+    """Fold something MakeMKV said many times into one line and a count.
+
+    A disc with a bad patch reports the same read error once per retry, which
+    runs to dozens of identical lines and buries the ones that say what
+    actually happened. Unattended, it buries them in a log nobody rereads.
+
+    Counting every occurrence rather than only consecutive runs matters here:
+    a failing read alternates between two errors, so consecutive folding would
+    still leave a screen of them.
+    """
+    counts: dict[str, int] = {}
+    for message in messages:
+        counts[message] = counts.get(message, 0) + 1
+
+    return [
+        message if count == 1 else f"{message} (\u00d7{count})"
+        for message, count in counts.items()
+    ]
 
 
 def duration_to_seconds(duration: str) -> int:

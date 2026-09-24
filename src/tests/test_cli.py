@@ -328,7 +328,7 @@ class RipCommandTests(CommandLineTestCase):
 
 class EncodeCommandTests(CommandLineTestCase):
     def _run_encode(self, *extra_arguments: str) -> tuple[int, str]:
-        def build_worker(configuration, catalog):
+        def build_worker(configuration, catalog, **_unused_settings):
             return EncodeWorker(
                 configuration,
                 catalog,
@@ -336,9 +336,14 @@ class EncodeCommandTests(CommandLineTestCase):
                 announce=lambda _line: None,
             )
 
+        # The full-queue path builds its worker inside the service, so both
+        # places that construct one have to be stubbed.
         with mock.patch("media_server.cli.is_handbrake_installed", return_value=True):
             with mock.patch("media_server.cli.EncodeWorker", build_worker):
-                return self._run_command("encode", *extra_arguments)
+                with mock.patch(
+                    "media_server.encode_service.EncodeWorker", build_worker
+                ):
+                    return self._run_command("encode", *extra_arguments)
 
     def _state_of(self, job_id: int) -> JobState:
         configuration = Configuration(
@@ -407,7 +412,7 @@ class EncodeCommandTests(CommandLineTestCase):
         self.library_root.mkdir()
         _exit_code, output = self._run_encode()
 
-        self.assertIn("Nothing waiting to be transcoded.", output)
+        self.assertIn("delivered The Matrix (1999)", output)
         self.assertEqual(self._state_of(job_id), JobState.DELIVERED)
 
     def test_a_missing_handbrake_is_reported_rather_than_crashing(self):

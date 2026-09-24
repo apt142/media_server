@@ -102,6 +102,21 @@ MSG:2004,0,2,"Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurre
 MSG:5003,0,2,"Failed to save title 0 to file title_t00.mkv","Failed to save title %1 to file %2","0","title_t00.mkv"
 """
 
+# A scratched Blu-ray, trimmed from a real failure. The same two errors repeat
+# once per retry, alternating, which is why they are counted rather than
+# folded only where they sit next to each other.
+DAMAGED_DISC_OUTPUT = """\
+MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"
+MSG:2004,0,2,"Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurred while reading '/BDMV/STREAM/00518.m2ts' at offset '3989962752'","...","..."
+MSG:2004,0,2,"Error 'Posix error - Input/output error' occurred while reading '/dev/rdisk7' at offset '3989962752'","...","..."
+MSG:2004,0,2,"Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurred while reading '/BDMV/STREAM/00518.m2ts' at offset '3989962752'","...","..."
+MSG:2004,0,2,"Error 'Posix error - Input/output error' occurred while reading '/dev/rdisk7' at offset '3989962752'","...","..."
+MSG:2004,0,2,"Error 'Scsi error - MEDIUM ERROR:L-EC UNCORRECTABLE ERROR' occurred while reading '/BDMV/STREAM/00518.m2ts' at offset '3989962752'","...","..."
+MSG:5003,0,2,"Failed to save title 0 to file title_t00.mkv","Failed to save title %1 to file %2","0","title_t00.mkv"
+MSG:5009,0,1,"Encountered 53 errors of type 'Read Error' - see http://www.makemkv.com/errors/read/","...","53"
+MSG:5005,0,2,"Copy complete. 0 titles saved, 1 failed.","...","0","1"
+"""
+
 # What an expired beta key looks like: the scan works, the decrypt does not.
 EXPIRED_KEY_OUTPUT = """\
 MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"

@@ -196,15 +196,6 @@ class WorkingThroughTheQueueTests(EncodeWorkerTestCase):
         self.assertFalse(outcome.had_work_to_do)
         self.assertIn("Nothing waiting", outcome.message)
 
-    def test_the_whole_backlog_is_worked_through_one_job_at_a_time(self):
-        self._stage_job(disc_label="FIRST_DISC")
-        self._stage_job(disc_label="SECOND_DISC")
-
-        outcomes = self._worker().encode_until_queue_is_empty()
-
-        self.assertEqual(len(outcomes), 2)
-        self.assertTrue(all(outcome.is_encoded for outcome in outcomes))
-
     def test_jobs_are_taken_oldest_first(self):
         first_job_id = self._stage_job(disc_label="FIRST_DISC")
         self._stage_job(disc_label="SECOND_DISC")
@@ -246,15 +237,6 @@ class FailedEncodeTests(EncodeWorkerTestCase):
         self.assertFalse(outcome.is_encoded)
         self.assertEqual(self.catalog.job_with_id(job_id).state, JobState.FAILED)
         self.assertIn("No raw files", outcome.message)
-
-    def test_a_failed_job_does_not_block_the_rest_of_the_queue(self):
-        self._stage_job(disc_label="BAD_DISC")
-        self._stage_job(disc_label="GOOD_DISC")
-        selective_handbrake = FakeHandBrake(failing_source_names=())
-
-        outcomes = self._worker(selective_handbrake).encode_until_queue_is_empty()
-
-        self.assertEqual(len(outcomes), 2)
 
 
 class RawFileOrderingTests(EncodeWorkerTestCase):
