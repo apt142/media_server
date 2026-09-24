@@ -42,7 +42,12 @@ NUMBERED_DISC_CODE = re.compile(
     r"\b(?:disc|disk|season|series|vol(?:ume)?)\s*\d{1,2}\b", re.IGNORECASE
 )
 SEASON_OR_DISC_CODE = re.compile(r"\b[sd]\d{1,2}\b", re.IGNORECASE)
-BARE_NUMBER = re.compile(r"\b\d{1,2}\b")
+
+# A number on the end of a film is part of its name: Iron Man 2, Ocean's 11,
+# Toy Story 3. A number on the end of a show is nearly always a disc number
+# that lost its marker. Both cannot be right, so what the disc turned out to
+# be decides which reading wins.
+BARE_TRAILING_NUMBER = re.compile(r"\s\d{1,2}$")
 
 # Discs advertise their edition in the label, which is never part of the title
 # anyone would search for: FELLOWSHIP_EE_D2 is the Fellowship of the Ring.
@@ -206,16 +211,24 @@ def disc_number_from_label(disc_label: str) -> int | None:
     return None
 
 
-def clean_disc_label(disc_label: str) -> str:
+def clean_disc_label(disc_label: str, is_show: bool = False) -> str:
     """Turn a volume label into something worth searching for.
 
     Labels are shouty and full of disc bookkeeping: FIREFLY_D1, THE_WIRE_S02_D3.
     Strip the bookkeeping and hand back the words.
+
+    Bare numbers are left alone on a film, because sequels are far more common
+    than disc numbers that forgot to say which disc they are.
     """
     words = spaced_label(disc_label)
     words = NUMBERED_DISC_CODE.sub(" ", words)
     words = DISC_BOOKKEEPING_WORDS.sub(" ", words)
     words = EDITION_MARKERS.sub(" ", words)
     words = SEASON_OR_DISC_CODE.sub(" ", words)
-    words = BARE_NUMBER.sub(" ", words)
-    return re.sub(r"\s+", " ", words).strip().title()
+    words = re.sub(r"\s+", " ", words).strip()
+
+    if is_show:
+        # Falling back to the untrimmed words keeps a show that is only a
+        # number, like 24, from being trimmed down to nothing at all.
+        words = BARE_TRAILING_NUMBER.sub("", words).strip() or words
+    return words.title()

@@ -7,7 +7,7 @@ from media_server.configuration import Configuration
 from media_server.job_catalog import JobCatalog, JobState
 from media_server.makemkv import MakeMkv
 from media_server.file_names import safe_file_component
-from media_server.rip_worker import RipWorker
+from media_server.rip_worker import RipSettings, RipWorker
 from media_server.volume_space import VolumeSpace
 from tests import makemkv_fixtures
 from tests.fake_drive import RecordingDiscDrive
@@ -36,6 +36,7 @@ class RipWorkerTestCase(unittest.TestCase):
         scan_output: str,
         unreadable_title_ids: tuple[int, ...] = (),
         rip_output: str = "",
+        settings: RipSettings | None = None,
     ) -> RipWorker:
         self.fake_command = FakeMakeMkvCommand(
             scan_output, unreadable_title_ids, rip_output
@@ -46,6 +47,7 @@ class RipWorkerTestCase(unittest.TestCase):
             makemkv=MakeMkv(run_command=self.fake_command),
             drive=self.drive,
             announce=self.announced_lines.append,
+            settings=settings,
         )
 
 
@@ -84,6 +86,59 @@ class RippingAFilmTests(RipWorkerTestCase):
         job = self.catalog.job_with_id(outcome.job_id)
         self.assertEqual(job.part_number, 2)
         self.assertTrue(job.is_part_of_split_film)
+
+
+class DoubleFeatureTests(RipWorkerTestCase):
+    """Two films on one disc. Missing one is far worse than ripping one extra."""
+
+    def test_both_films_are_ripped(self):
+        outcome = self._worker(makemkv_fixtures.DOUBLE_FEATURE_DVD).rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [0, 1])
+        self.assertEqual(len(outcome.ripped_files), 2)
+
+    def test_it_says_it_found_more_than_one_film(self):
+        self._worker(makemkv_fixtures.DOUBLE_FEATURE_DVD).rip_disc_in_drive()
+
+        self.assertIn("double feature", "\n".join(self.announced_lines))
+
+    def test_main_feature_only_takes_one_of_them(self):
+        worker = self._worker(
+            makemkv_fixtures.DOUBLE_FEATURE_DVD,
+            settings=RipSettings(is_main_feature_only=True),
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(len(outcome.ripped_files), 1)
+
+    def test_a_longer_threshold_can_rule_the_shorter_film_out(self):
+        """Both run about 72 minutes, so 75 leaves neither at feature length."""
+        worker = self._worker(
+            makemkv_fixtures.DOUBLE_FEATURE_DVD,
+            settings=RipSettings(minimum_feature_seconds=75 * 60),
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(len(outcome.ripped_files), 1)
+
+    def test_a_single_feature_disc_is_unaffected(self):
+        outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        self.assertEqual(self.fake_command.ripped_title_ids, [0])
+
+    def test_a_short_film_still_gets_ripped_when_nothing_reaches_feature_length(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            settings=RipSettings(minimum_feature_seconds=10 * 3600),
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(len(outcome.ripped_files), 1)
 
 
 class RippingATvDiscTests(RipWorkerTestCase):

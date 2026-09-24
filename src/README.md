@@ -167,11 +167,35 @@ without touching the disc otherwise — the equivalent of the old
 
 ### What gets ripped
 
-On a **film** disc, only the feature. MakeMKV flags the real feature when its
-playlist detection works and that beats any guess; otherwise the longest title
-wins. Length beats file size here, because a commentary or bonus-angle cut runs
-as long as the film but carries more audio, so "biggest file" picks the wrong
-one.
+On a **film** disc, every title running longer than 65 minutes — not just the
+longest one. Double features are common, and nothing on a disc reliably
+separates two films from one film and its commentary cut. Taking both costs a
+file you delete in a second; taking one costs a film that was never ripped and
+that you will not notice is missing until you want it.
+
+Two flags adjust that when you already know what is on the disc:
+
+```sh
+./media-server rip --main-feature-only   # take one film, the old behaviour
+./media-server rip --min-minutes 90      # raise the bar for what counts
+```
+
+With `--main-feature-only`, MakeMKV's own feature flag wins when its playlist
+detection worked, and otherwise the longest title does. Length beats file size
+there, because a commentary or bonus-angle cut runs as long as the film but
+carries more audio, so "biggest file" picks the wrong one.
+
+When a disc does yield two films, they go into the library as **separate
+movies** rather than two parts of one:
+
+```
+Movies/Iron Man 2 And Thor - feature1/Iron Man 2 And Thor - feature1.mp4
+Movies/Iron Man 2 And Thor - feature2/Iron Man 2 And Thor - feature2.mp4
+```
+
+Sharing a folder is what makes Plex stack files into one long film, so they get
+one each. They are numbered in disc order, which is what lets you tell them
+apart: play a few seconds of each and rename.
 
 On a **TV** disc, every title of episode length. Anything shorter is a menu
 loop or a trailer and is left behind.
@@ -189,6 +213,10 @@ The job is named from the disc label with the bookkeeping stripped off, so
 `FELLOWSHIP_EE_D2` becomes "Fellowship", part 2. That is good enough to keep
 the queue readable, but it is not a real lookup yet — wiring in the Wikidata
 and TVmaze searches is still on the list below.
+
+A bare number is kept on a film and dropped from a show, because `IRON_MAN_2`
+is a sequel and `FIREFLY 2` is a disc. Getting that backwards would hand Plex
+"Iron Man" for an Iron Man 2 disc, which matches something real and wrong.
 
 ## Transcoding the backlog
 

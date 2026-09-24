@@ -141,6 +141,20 @@ class DiscScan:
         candidate_titles = flagged_titles or self.titles
         return max(candidate_titles, key=lambda title: title.length_seconds)
 
+    def feature_titles(self, minimum_length_seconds: int) -> list[DiscTitle]:
+        """Every title long enough to be a film, in the order they sit on the disc.
+
+        A double feature puts two films on one disc, and taking only the
+        longest loses the other silently. Taking both sometimes picks up a
+        commentary cut as well, which is a cheap file to delete next to a film
+        that never got ripped at all.
+        """
+        return [
+            title
+            for title in self.titles
+            if title.length_seconds >= minimum_length_seconds
+        ]
+
     def titles_lasting_between(
         self, shortest_seconds: int, longest_seconds: int
     ) -> list[DiscTitle]:

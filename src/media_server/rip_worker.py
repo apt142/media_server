@@ -31,6 +31,23 @@ RAW_FOLDER_NAME = "raw"
 # finishes, so the peak need is more than the titles themselves.
 SPACE_HEADROOM_MULTIPLIER = 1.3
 
+# Anything running longer than the longest plausible episode is a feature
+# rather than an extra. Borrowing the classifier's own ceiling keeps the two
+# definitions from drifting apart.
+FEATURE_LENGTH_SECONDS = DiscClassifier.LONGEST_EPISODE_SECONDS
+
+
+@dataclass(frozen=True)
+class RipSettings:
+    """What to take off a film disc."""
+
+    minimum_feature_seconds: int = FEATURE_LENGTH_SECONDS
+    is_main_feature_only: bool = False
+
+    @property
+    def minimum_feature_minutes(self) -> int:
+        return self.minimum_feature_seconds // 60
+
 
 @dataclass
 class RipOutcome:
@@ -61,12 +78,14 @@ class RipWorker:
         makemkv: MakeMkv | None = None,
         drive: DiscDrive | None = None,
         announce=print,
+        settings: RipSettings | None = None,
     ):
         self.configuration = configuration
         self.catalog = catalog
         self.makemkv = makemkv or MakeMkv()
         self.drive = drive or DiscDrive()
         self.announce = announce
+        self.settings = settings or RipSettings()
 
     def rip_disc_in_drive(self) -> RipOutcome:
         """Read the disc, rip it, record it, and eject it."""
@@ -100,22 +119,63 @@ class RipWorker:
         if not titles_to_rip:
             return RipOutcome(message="Nothing on this disc looks worth ripping.")
 
+        self._announce_multiple_features(verdict, titles_to_rip)
+
         if not self._has_room_for(disc_scan.total_size_bytes(titles_to_rip)):
-            return RipOutcome(message="Not enough room in staging to rip this disc.")
+            return RipOutcome(message=self._no_room_message(titles_to_rip))
 
         return self._rip_and_record(disc_scan, verdict, titles_to_rip)
 
     def _titles_to_rip(
         self, disc_scan: DiscScan, verdict: DiscVerdict
     ) -> list[DiscTitle]:
-        """Every episode on a TV disc, or just the feature on a film disc."""
+        """Every episode on a TV disc, or every film on a film disc."""
         if verdict.is_show:
             return DiscClassifier(disc_scan).episode_length_titles()
+        return self._film_titles(disc_scan)
 
-        feature_title = disc_scan.feature_title()
-        if feature_title is None:
+    def _film_titles(self, disc_scan: DiscScan) -> list[DiscTitle]:
+        """Every feature-length title, not only the longest one.
+
+        Double features are common and nothing on the disc reliably separates
+        two films from one film and its commentary cut. Taking both costs a
+        file somebody deletes in a second; taking one costs a film that was
+        never ripped and will not be noticed until it is wanted.
+
+        Falling back to the single best guess matters for a short film, where
+        nothing on the disc reaches feature length at all.
+        """
+        if not self.settings.is_main_feature_only:
+            feature_titles = disc_scan.feature_titles(
+                self.settings.minimum_feature_seconds
+            )
+            if feature_titles:
+                return feature_titles
+
+        single_feature = disc_scan.feature_title()
+        if single_feature is None:
             return []
-        return [feature_title]
+        return [single_feature]
+
+    def _announce_multiple_features(
+        self, verdict: DiscVerdict, titles_to_rip: list[DiscTitle]
+    ) -> None:
+        if verdict.is_show or len(titles_to_rip) < 2:
+            return
+        self.announce(
+            f"{len(titles_to_rip)} titles run past "
+            f"{self.settings.minimum_feature_minutes} minutes, so this looks like a "
+            "double feature. Ripping all of them."
+        )
+
+    def _no_room_message(self, titles_to_rip: list[DiscTitle]) -> str:
+        """Point at the way out when it was the extra features that did not fit."""
+        if len(titles_to_rip) < 2:
+            return "Not enough room in staging to rip this disc."
+        return (
+            f"Not enough room in staging for {len(titles_to_rip)} titles. "
+            "Let the queue drain, or use --main-feature-only to take just one."
+        )
 
     def _has_room_for(self, needed_bytes: int) -> bool:
         staging_space = space_at(self.configuration.staging_root)
@@ -203,7 +263,7 @@ class RipWorker:
         staged_path: Path,
         episode_count: int,
     ) -> RippedDisc:
-        title = clean_disc_label(disc_scan.disc_label)
+        title = clean_disc_label(disc_scan.disc_label, is_show=verdict.is_show)
         season_number = self._season_number_for(disc_scan, verdict)
 
         return RippedDisc(

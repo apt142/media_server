@@ -36,17 +36,36 @@ def destinations_for(job: Job, source_count: int, extension: str) -> list[Path]:
 
 
 def film_destinations(job: Job, source_count: int, extension: str) -> list[Path]:
-    """A film is normally one file, but a disc can yield more than one.
+    """A film is normally one file, but a disc can hold more than one film.
 
-    When it does, they are numbered as parts so Plex stacks them rather than
-    treating them as unrelated films.
+    A double feature is the common case, and the two are not parts of one
+    film. Each gets its own folder so Plex treats them as the separate movies
+    they are rather than stacking them into a four hour Iron Man.
+
+    A film genuinely split across discs is a different shape: one title per
+    disc, with the part number coming from the disc label rather than from how
+    many files came off one disc.
     """
     if source_count <= 1:
         return [film_destination(job, extension)]
     return [
-        film_destination(job, extension, part_number=offset + 1)
+        separate_feature_destination(job, extension, feature_number=offset + 1)
         for offset in range(source_count)
     ]
+
+
+def separate_feature_destination(
+    job: Job, extension: str, feature_number: int
+) -> Path:
+    """One of several films found on the same disc, until it is given a name.
+
+    Numbered in disc order, which is what makes them tellable apart: the
+    person renaming them can play a few seconds of each and knows which is
+    which. Both the folder and the file carry the number so a rename of the
+    folder alone cannot leave Plex matching on a stale name.
+    """
+    folder_name = f"{film_folder_name(job)} - feature{feature_number}"
+    return Path(MOVIES_FOLDER) / folder_name / f"{folder_name}.{extension}"
 
 
 def film_destination(

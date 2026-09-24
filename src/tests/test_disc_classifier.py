@@ -107,5 +107,37 @@ class DiscLabelReadingTests(unittest.TestCase):
                 self.assertEqual(clean_disc_label(disc_label), expected_title)
 
 
+class SequelNumberTests(unittest.TestCase):
+    """A number in a film's name is the name. In a show's it is the disc."""
+
+    def test_a_films_number_is_part_of_its_title(self):
+        cases = [
+            ("IRON_MAN_2", "Iron Man 2"),
+            ("OCEANS_11", "Oceans 11"),
+            ("TOY_STORY_3", "Toy Story 3"),
+            ("THOR", "Thor"),
+        ]
+
+        for disc_label, expected_title in cases:
+            with self.subTest(disc_label=disc_label):
+                self.assertEqual(clean_disc_label(disc_label), expected_title)
+
+    def test_disc_bookkeeping_is_still_stripped_from_a_film(self):
+        cases = [
+            ("FELLOWSHIP_EE_D2", "Fellowship"),
+            ("KNIVES_OUT_FEATURE_DISC1", "Knives Out"),
+        ]
+
+        for disc_label, expected_title in cases:
+            with self.subTest(disc_label=disc_label):
+                self.assertEqual(clean_disc_label(disc_label), expected_title)
+
+    def test_a_trailing_number_on_a_show_is_read_as_a_disc_number(self):
+        self.assertEqual(clean_disc_label("FIREFLY 2", is_show=True), "Firefly")
+
+    def test_a_show_that_is_only_a_number_keeps_it(self):
+        self.assertEqual(clean_disc_label("24", is_show=True), "24")
+
+
 if __name__ == "__main__":
     unittest.main()

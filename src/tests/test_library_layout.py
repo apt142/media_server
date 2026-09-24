@@ -75,12 +75,31 @@ class FilmLayoutTests(unittest.TestCase):
             [Path("Movies/Alien Resurrection (1997)/Alien Resurrection (1997).mp4")],
         )
 
-    def test_a_disc_yielding_two_films_numbers_them_as_parts(self):
+    def test_a_double_feature_becomes_two_films_rather_than_one_in_two_parts(self):
         destinations = destinations_for(build_job(), source_count=2, extension="mp4")
 
         self.assertEqual(len(destinations), 2)
-        self.assertTrue(destinations[0].name.endswith("- part1.mp4"))
-        self.assertTrue(destinations[1].name.endswith("- part2.mp4"))
+        self.assertEqual(
+            destinations[0],
+            Path("Movies/The Matrix (1999) - feature1/The Matrix (1999) - feature1.mp4"),
+        )
+        self.assertEqual(
+            destinations[1],
+            Path("Movies/The Matrix (1999) - feature2/The Matrix (1999) - feature2.mp4"),
+        )
+
+    def test_each_film_on_a_double_feature_gets_its_own_folder(self):
+        """Sharing a folder is what makes Plex stack them into one long film."""
+        destinations = destinations_for(build_job(), source_count=2, extension="mp4")
+
+        self.assertNotEqual(destinations[0].parent, destinations[1].parent)
+
+    def test_a_film_split_across_discs_still_uses_its_part_number(self):
+        split_film = build_job(part_number=2)
+
+        destinations = destinations_for(split_film, source_count=1, extension="mp4")
+
+        self.assertTrue(destinations[0].name.endswith("- part2.mp4"))
 
 
 class EpisodeLayoutTests(unittest.TestCase):

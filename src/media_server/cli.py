@@ -19,7 +19,7 @@ from .job_catalog import JobCatalog, JobState
 from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
 from .makemkv import MakeMkv
-from .rip_worker import RipWorker
+from .rip_worker import FEATURE_LENGTH_SECONDS, RipSettings, RipWorker
 from .volume_space import LOW_SPACE_GIGABYTES, VOLUME_MISSING, VolumeSpace, space_at
 
 LAUNCHER_PATH = Path(__file__).resolve().parents[2] / "media-server"
@@ -193,14 +193,17 @@ class PipelineCommands:
                 print(f"        {job.failure_reason}")
         return 0
 
-    def rip_disc_in_drive(self) -> int:
+    def rip_disc_in_drive(self, settings: RipSettings) -> int:
         """Rip whatever is in the drive, then eject it."""
         makemkv = MakeMkv()
         if not makemkv.is_installed():
             print(MAKEMKV_MISSING_MESSAGE)
             return 1
 
-        outcome = RipWorker(self.configuration, self.catalog, makemkv).rip_disc_in_drive()
+        worker = RipWorker(
+            self.configuration, self.catalog, makemkv, settings=settings
+        )
+        outcome = worker.rip_disc_in_drive()
         print(outcome.message)
         if outcome.is_ripped or outcome.is_duplicate:
             return 0
@@ -391,7 +394,24 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
 
     subcommands = parser.add_subparsers(dest="command", required=True)
-    subcommands.add_parser("rip", help="Rip the disc in the drive, then eject it")
+
+    rip_command = subcommands.add_parser(
+        "rip", help="Rip the disc in the drive, then eject it"
+    )
+    rip_command.add_argument(
+        "--main-feature-only",
+        action="store_true",
+        dest="is_main_feature_only",
+        help="Take one film rather than every feature-length title on the disc",
+    )
+    rip_command.add_argument(
+        "--min-minutes",
+        type=int,
+        default=FEATURE_LENGTH_SECONDS // 60,
+        dest="minimum_feature_minutes",
+        help="How long a title must run to count as a film (default: %(default)s)",
+    )
+
     subcommands.add_parser("scan", help="Say what the disc is, without ripping it")
 
     watch_command = subcommands.add_parser(
@@ -461,7 +481,12 @@ def main(argument_values: list[str] | None = None) -> int:
 
 def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> int:
     if arguments.command == "rip":
-        return commands.rip_disc_in_drive()
+        return commands.rip_disc_in_drive(
+            RipSettings(
+                minimum_feature_seconds=arguments.minimum_feature_minutes * 60,
+                is_main_feature_only=arguments.is_main_feature_only,
+            )
+        )
     if arguments.command == "scan":
         return commands.scan_disc()
     if arguments.command == "watch":
