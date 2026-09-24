@@ -1,8 +1,12 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from media_server import makemkv
 from media_server.makemkv import (
+    CommandResult,
     MakeMkv,
     collapse_repeated_messages,
     duration_to_seconds,
@@ -223,6 +227,43 @@ class RippingTests(unittest.TestCase):
 
         self.assertEqual(disc_scan.disc_label, "THE_MATRIX")
         self.assertEqual(fake_command.scanned_count, 1)
+
+
+class OutputDecodingTests(unittest.TestCase):
+    """A disc label is raw bytes and need not be valid UTF-8.
+
+    Rather than install MakeMKV, these run this interpreter as the command, so
+    the bytes coming back over the pipe are real ones.
+    """
+
+    def _run_program(self, program: str) -> CommandResult:
+        with mock.patch.object(makemkv, "MAKEMKV_COMMAND", Path(sys.executable)):
+            return makemkv.run_makemkv(["-c", program])
+
+    def test_a_byte_that_is_not_utf8_does_not_stop_the_scan(self):
+        result = self._run_program(
+            r"import sys; sys.stdout.buffer.write(b'CINFO:2,0,\"CAF\xc9\"')"
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("CINFO:2,0,", result.output)
+
+    def test_the_rest_of_a_label_survives_the_byte_that_did_not_decode(self):
+        result = self._run_program(
+            r"import sys; sys.stdout.buffer.write(b'CINFO:2,0,\"CAF\xc9 SOCIETY\"')"
+        )
+        disc_scan = parse_disc_scan(result.output)
+
+        self.assertIn("CAF", disc_scan.disc_label)
+        self.assertIn("SOCIETY", disc_scan.disc_label)
+
+    def test_a_missing_makemkv_is_reported_rather_than_raised(self):
+        with mock.patch.object(
+            makemkv, "MAKEMKV_COMMAND", Path("/nowhere/makemkvcon")
+        ):
+            result = makemkv.run_makemkv(["info"])
+
+        self.assertFalse(result.is_successful)
 
 
 class LargestFileTests(unittest.TestCase):

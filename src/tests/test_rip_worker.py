@@ -296,6 +296,9 @@ class FolderNamingTests(unittest.TestCase):
             ("AC/DC Live", "AC DC Live"),
             ("  spaced  out  ", "spaced out"),
             ("trailing.", "trailing"),
+            # What a label mastered in another encoding decodes to.
+            ("CAF\ufffd SOCIETY", "CAF SOCIETY"),
+            ("BROKEN\ufffd", "BROKEN"),
         ]
 
         for disc_label, expected_name in cases:

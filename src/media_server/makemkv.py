@@ -191,12 +191,20 @@ def run_makemkv(arguments: list[str]) -> CommandResult:
     A failing exit code is not treated as an exception, because MakeMKV reports
     most real problems through its MSG lines while still exiting zero, and
     sometimes exits non-zero having produced a perfectly good file.
+
+    The output is not guaranteed to be valid UTF-8. A volume label is whatever
+    bytes were burned into the disc, and plenty of DVDs carry accented
+    characters in some other encoding entirely. Replacing the bytes that make
+    no sense keeps one badly mastered disc from taking the whole rip down over
+    a character in its name.
     """
     try:
         completed_process = subprocess.run(
             [str(MAKEMKV_COMMAND), *arguments],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdin=subprocess.DEVNULL,
         )
     except OSError as command_error:
