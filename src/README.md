@@ -123,7 +123,7 @@ ever grows, and status is for seeing what is moving right now.
 | Command | What it does |
 |---|---|
 | `watch` | Rips every disc put in the drive, until stopped |
-| `rip` | Rips the disc in the drive, records the job, ejects the disc |
+| `rip` | Rips the disc in the drive, records the job, ejects the disc. `--again` redoes a disc already ripped |
 | `scan` | Says what the disc is and lists its titles, without ripping |
 | `encode` | Transcodes the ripped backlog and delivers it. `--one` does a single job, `--forever` keeps going |
 | `status` | Both folders, free space on each, backlog size, queue depth |
@@ -371,8 +371,25 @@ fingerprints identically.
 
 Re-inserting a disc you have already ripped is recognised and skipped. A disc
 whose last attempt **failed** is not treated as a duplicate, because
-re-inserting it is exactly how you retry. If you want to deliberately rip
-something again, `forget` its job id first.
+re-inserting it is exactly how you retry.
+
+When the first attempt went through but was not good enough to keep, `--again`
+overrides the check:
+
+```sh
+./media-server rip --again
+```
+
+That throws away the first attempt's record and its staged files, then rips the
+disc fresh. A job that is **being transcoded right now** is refused instead:
+deleting its files out from under the encoder would fail the transcode rather
+than redo it, so let it finish or stop the encoder first.
+
+Anything already delivered to the library is left where it is. The new rip
+writes to the same paths and replaces it as it lands, which does mean that if
+the second attempt produces *fewer* files than the first — `--main-feature-only`
+after a double feature, say — the extra file from the first attempt stays in the
+library until you delete it.
 
 ### An unplugged drive never loses work
 

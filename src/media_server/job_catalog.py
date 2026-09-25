@@ -8,6 +8,7 @@ loses track of work that is part way through.
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -132,6 +133,16 @@ class Job:
         if self.encoded_path is None:
             return total_bytes
         return total_bytes + _directory_size_bytes(self.encoded_path)
+
+    def remove_staged_files(self) -> None:
+        """Delete the raw rip and the encoded copy this job is holding.
+
+        Called once the library has the files, and again when a disc is ripped
+        a second time and the first attempt's files are sitting in the way.
+        """
+        for staged_directory in (self.encoded_path, self.staged_path):
+            if staged_directory is not None:
+                shutil.rmtree(staged_directory, ignore_errors=True)
 
 
 SCHEMA_STATEMENTS = (

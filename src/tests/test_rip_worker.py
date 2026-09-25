@@ -204,6 +204,83 @@ class DuplicateDiscTests(RipWorkerTestCase):
 
         self.assertTrue(second_outcome.is_ripped)
 
+    def test_the_duplicate_message_says_how_to_override_it(self):
+        self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        second_outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        self.assertIn("--again", second_outcome.message)
+
+
+class RippingADiscAgainTests(RipWorkerTestCase):
+    """--again is for a first attempt that was not good enough to keep."""
+
+    ALLOW_RERIP = RipSettings(is_rerip_allowed=True)
+
+    def _rip_again(self, scan_output: str = makemkv_fixtures.FILM_BLURAY):
+        return self._worker(scan_output, settings=self.ALLOW_RERIP).rip_disc_in_drive()
+
+    def test_a_disc_already_ripped_is_ripped_over_the_top(self):
+        self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        second_outcome = self._rip_again()
+
+        self.assertTrue(second_outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [0])
+
+    def test_the_first_attempt_is_forgotten_rather_than_left_as_a_second_job(self):
+        first_outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        second_outcome = self._rip_again()
+
+        self.assertIsNone(self.catalog.job_with_id(first_outcome.job_id))
+        self.assertEqual(len(self.catalog.all_jobs()), 1)
+        self.assertNotEqual(second_outcome.job_id, first_outcome.job_id)
+
+    def test_the_first_attempts_files_do_not_pile_up_in_the_new_rip(self):
+        first_outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        stale_file = self.catalog.job_with_id(first_outcome.job_id).staged_path
+        (stale_file / "left-over.mkv").write_bytes(b"from the first attempt")
+
+        second_outcome = self._rip_again()
+
+        staged_path = self.catalog.job_with_id(second_outcome.job_id).staged_path
+        self.assertFalse((staged_path / "left-over.mkv").exists())
+
+    def test_it_says_which_job_it_is_replacing(self):
+        self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        self.announced_lines.clear()
+
+        self._rip_again()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("Replacing #1 The Matrix", announced_output)
+
+    def test_a_job_being_transcoded_right_now_is_left_alone(self):
+        first_outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        self.catalog.claim_next_for_encoding()
+
+        second_outcome = self._rip_again()
+
+        self.assertFalse(second_outcome.is_ripped)
+        self.assertIn("transcoded right now", second_outcome.message)
+        self.assertIsNotNone(self.catalog.job_with_id(first_outcome.job_id))
+
+    def test_the_files_of_a_job_being_transcoded_are_not_deleted(self):
+        first_outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        staged_path = self.catalog.job_with_id(first_outcome.job_id).staged_path
+        self.catalog.claim_next_for_encoding()
+
+        self._rip_again()
+
+        self.assertTrue(staged_path.is_dir())
+
+    def test_a_disc_that_has_never_been_seen_is_ripped_as_normal(self):
+        outcome = self._rip_again()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(len(self.catalog.all_jobs()), 1)
+
 
 class UnreadableDiscTests(RipWorkerTestCase):
     def test_a_disc_with_no_titles_is_reported_not_ripped(self):

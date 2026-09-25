@@ -104,7 +104,7 @@ class LibraryDelivery:
             if not self._copy_into_place(source_file, destination):
                 return False
 
-        self._clear_staged_files(job)
+        job.remove_staged_files()
         self.catalog.mark_delivered(job.job_id)
         return True
 
@@ -131,13 +131,6 @@ class LibraryDelivery:
 
         partial_destination.replace(destination)
         return True
-
-    def _clear_staged_files(self, job: Job) -> None:
-        """Remove the raw rip and the encoded copy now that the library has them."""
-        for staged_directory in (job.encoded_path, job.staged_path):
-            if staged_directory is None:
-                continue
-            shutil.rmtree(staged_directory, ignore_errors=True)
 
     def remove_abandoned_partial_files(self) -> list[Path]:
         """Clean up partial copies left behind by an interrupted delivery."""

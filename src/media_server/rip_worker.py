@@ -21,7 +21,7 @@ from .disc_classifier import (
 )
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
-from .job_catalog import JobCatalog, RippedDisc
+from .job_catalog import Job, JobCatalog, JobState, RippedDisc
 from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult
 from .volume_space import space_at
 
@@ -43,6 +43,12 @@ class RipSettings:
 
     minimum_feature_seconds: int = FEATURE_LENGTH_SECONDS
     is_main_feature_only: bool = False
+
+    # Rip a disc that has already been through, throwing away what the first
+    # attempt produced. Off by default: feeding a stack of discs through means
+    # putting the same one back in by mistake, and doing nothing is the right
+    # answer to that far more often than ripping it twice is.
+    is_rerip_allowed: bool = False
 
     @property
     def minimum_feature_minutes(self) -> int:
@@ -101,14 +107,9 @@ class RipWorker:
 
         already_ripped = self.catalog.existing_job_for_disc(disc_scan.fingerprint())
         if already_ripped is not None:
-            self.drive.eject()
-            return RipOutcome(
-                message=(
-                    f"Already ripped this disc as #{already_ripped.job_id} "
-                    f"{already_ripped.describe_title()}. Ejecting without doing it again."
-                ),
-                job_id=already_ripped.job_id,
-            )
+            blocked = self._handle_disc_seen_before(already_ripped)
+            if blocked is not None:
+                return blocked
 
         verdict = DiscClassifier(disc_scan).verdict()
         self.announce(verdict.describe())
@@ -125,6 +126,54 @@ class RipWorker:
             return RipOutcome(message=self._no_room_message(titles_to_rip))
 
         return self._rip_and_record(disc_scan, verdict, titles_to_rip)
+
+    def _handle_disc_seen_before(self, earlier_job: Job) -> RipOutcome | None:
+        """Decide what to do about a disc that has already been through.
+
+        None means the way is clear and the rip should carry on.
+        """
+        if not self.settings.is_rerip_allowed:
+            self.drive.eject()
+            return RipOutcome(
+                message=(
+                    f"Already ripped this disc as #{earlier_job.job_id} "
+                    f"{earlier_job.describe_title()}. Ejecting without doing it "
+                    "again. Use --again to rip it over the top."
+                ),
+                job_id=earlier_job.job_id,
+            )
+
+        if earlier_job.state == JobState.ENCODING:
+            # The encoder is reading these files right now, and deleting them
+            # out from under it would fail the transcode rather than redo it.
+            return RipOutcome(
+                message=(
+                    f"#{earlier_job.job_id} {earlier_job.describe_title()} is being "
+                    "transcoded right now. Let it finish, or stop the encoder, "
+                    "before ripping this disc again."
+                ),
+                job_id=earlier_job.job_id,
+            )
+
+        self._discard_earlier_rip(earlier_job)
+        return None
+
+    def _discard_earlier_rip(self, earlier_job: Job) -> None:
+        """Clear the first attempt out of the way of the second.
+
+        The record goes as well as the files. Leaving it would mean the new rip
+        landing in the same folder as the old one's titles, and the disc still
+        counting as a duplicate the next time it goes in the drive.
+
+        Anything already delivered to the library is left alone. The new rip
+        writes to the same paths and replaces it as it lands.
+        """
+        self.announce(
+            f"Replacing #{earlier_job.job_id} {earlier_job.describe_title()}, "
+            f"which was {earlier_job.state}."
+        )
+        earlier_job.remove_staged_files()
+        self.catalog.forget_job(earlier_job.job_id)
 
     def _titles_to_rip(
         self, disc_scan: DiscScan, verdict: DiscVerdict

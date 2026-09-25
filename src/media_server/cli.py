@@ -249,7 +249,10 @@ class PipelineCommands:
 
         if self.has_catalog and self.catalog.is_duplicate_disc(disc_scan.fingerprint()):
             print()
-            print("This disc has already been ripped. 'rip' would eject it untouched.")
+            print(
+                "This disc has already been ripped. 'rip' would eject it untouched; "
+                "'rip --again' would replace the first attempt."
+            )
         return 0
 
     def encode_queue(self, is_encoding_one: bool) -> int:
@@ -431,6 +434,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Take one film rather than every feature-length title on the disc",
     )
     rip_command.add_argument(
+        "--again",
+        action="store_true",
+        dest="is_rerip_allowed",
+        help="Rip a disc that has already been through, replacing the first attempt",
+    )
+    rip_command.add_argument(
         "--min-minutes",
         type=int,
         default=FEATURE_LENGTH_SECONDS // 60,
@@ -511,6 +520,7 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
             RipSettings(
                 minimum_feature_seconds=arguments.minimum_feature_minutes * 60,
                 is_main_feature_only=arguments.is_main_feature_only,
+                is_rerip_allowed=arguments.is_rerip_allowed,
             )
         )
     if arguments.command == "scan":

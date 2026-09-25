@@ -349,7 +349,7 @@ class RipCommandTests(CommandLineTestCase):
             return_value=self._installed_makemkv(scan_output),
         ):
             with mock.patch("media_server.rip_worker.DiscDrive", RecordingDiscDrive):
-                return self._run_command(command)
+                return self._run_command(*command.split())
 
     def test_ripping_a_film_queues_it_and_says_so(self):
         self._write_configuration_file()
@@ -392,6 +392,26 @@ class RipCommandTests(CommandLineTestCase):
         _exit_code, output = self._run_with_disc("scan", makemkv_fixtures.FILM_BLURAY)
 
         self.assertIn("already been ripped", output)
+
+    def test_the_same_disc_twice_is_refused_without_the_override(self):
+        self._write_configuration_file()
+        self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
+
+        _exit_code, output = self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
+
+        self.assertIn("Ejecting without doing it again", output)
+
+    def test_ripping_again_replaces_the_first_attempt(self):
+        self._write_configuration_file()
+        self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
+
+        exit_code, output = self._run_with_disc(
+            "rip --again", makemkv_fixtures.FILM_BLURAY
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Replacing #1 The Matrix", output)
+        self.assertIn("The disc is out and the transcode is queued.", output)
 
     def test_a_missing_makemkv_is_reported_rather_than_crashing(self):
         self._write_configuration_file()
