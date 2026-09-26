@@ -17,8 +17,8 @@ ROKU_MAX_H264_LEVEL=42
 usage() {
   cat <<EOF
 Usage:
-  ./check-rip.sh /path/to/file.mp4 [more files...]
-  ./check-rip.sh              checks everything in the library
+  ./scripts/check-rip.sh /path/to/file.mp4 [more files...]
+  ./scripts/check-rip.sh              checks everything in the library
 
 Says, for each file, whether a Roku can play it as-is or whether Plex will have
 to transcode it. Transcoding is the usual cause of stuttering and playback

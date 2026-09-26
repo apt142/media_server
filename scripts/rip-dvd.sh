@@ -28,9 +28,9 @@ MOVIE_YEAR=""
 usage() {
   cat <<EOF
 Usage:
-  ./rip-dvd.sh ["Movie Title"] [year]
+  ./scripts/rip-dvd.sh ["Movie Title"] [year]
 
-Movies only. TV discs are handled by ./rip-shows.sh, which identifies the show
+Movies only. TV discs are handled by ./scripts/rip-shows.sh, which identifies the show
 and its episodes rather than guessing from the disc label.
 
 Reads the disc in the USB drive with MakeMKV, then converts with HandBrake.
@@ -64,7 +64,7 @@ If you omit the name, the script reads the disc label and looks it up on Wikidat
   --part N               This disc is part N of a film split over several
                          discs, like the Lord of the Rings extended editions.
                          Rip each disc with its own number, then join them
-                         with ./join-parts.sh
+                         with ./scripts/join-parts.sh
   --ask                  Stop and confirm the title instead of taking the best
                          match. Without this the rip runs unattended.
   --no-eject             Leave the disc in the drive when it finishes
@@ -77,7 +77,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tv|--season|--episode)
-      print_error "TV ripping moved to ./rip-shows.sh, which identifies episodes properly."
+      print_error "TV ripping moved to ./scripts/rip-shows.sh, which identifies episodes properly."
       exit 1
       ;;
     --list)
@@ -223,7 +223,7 @@ print_title_table() {
         printf '%-6s %-10s %-9s %-14s %-6s %s\n' \
           "$title_id" "$duration" "$(human_gigabytes "$size_bytes")" "$source" "$flag" "$name"
       done
-  printf '\nRip one of these with: ./rip-dvd.sh --title N\n'
+  printf '\nRip one of these with: ./scripts/rip-dvd.sh --title N\n'
 }
 
 # Prefer MakeMKV's main-feature flag, then the longest title. Length beats file
@@ -310,8 +310,8 @@ lookup_title_and_year() {
   if [[ "$is_asking_before_choices" -eq 0 ]]; then
     if [[ "${#titles[@]}" -eq 0 ]]; then
       print_error "Lookup found nothing for \"${search_query}\"."
-      print_line "Name it yourself:  ./rip-dvd.sh \"Movie Title\" 1999"
-      print_line "Or pick from a search:  ./rip-dvd.sh --ask"
+      print_line "Name it yourself:  ./scripts/rip-dvd.sh \"Movie Title\" 1999"
+      print_line "Or pick from a search:  ./scripts/rip-dvd.sh --ask"
       exit 1
     fi
     apply_lookup_choice "1" "${titles[@]}"
@@ -449,7 +449,7 @@ rip_movie() {
     fi
     if ! title_is_flagged_main "$disc_info" "$title_id"; then
       print_line "MakeMKV did not flag a main feature, so this is the longest title."
-      print_line "If that turns out to be a commentary or bonus cut, run ./rip-dvd.sh --list and pick with --title N."
+      print_line "If that turns out to be a commentary or bonus cut, run ./scripts/rip-dvd.sh --list and pick with --title N."
     fi
   fi
 
@@ -593,7 +593,7 @@ rip_all_titles() {
   ls -lhS "$destination" | tail -n +2
   print_line ""
   print_line "Nothing was added to Plex. Play them, find the keeper, then either:"
-  print_line "  ./rip-dvd.sh --title N \"Movie Title\" 1999     (re-rip and encode properly)"
+  print_line "  ./scripts/rip-dvd.sh --title N \"Movie Title\" 1999     (re-rip and encode properly)"
   print_line "  mv the file into ~/Media/Movies/Movie Title (Year)/ as-is"
 }
 
@@ -601,7 +601,7 @@ require_macos
 require_not_root
 
 if [[ ! -x "$MAKE_MKV_COMMAND" ]]; then
-  print_error "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
+  print_error "MakeMKV is not installed. Run ./scripts/setup.sh on the server Mac first."
   exit 1
 fi
 
@@ -617,7 +617,7 @@ fi
 
 # Only the encoding paths need HandBrake. --list and --all never touch it.
 if [[ "$is_copying_without_encode" -eq 0 ]] && ! handbrake_command >/dev/null; then
-  print_error "HandBrakeCLI is not installed. Run ./setup.sh on the server Mac first."
+  print_error "HandBrakeCLI is not installed. Run ./scripts/setup.sh on the server Mac first."
   exit 1
 fi
 
@@ -634,7 +634,7 @@ eject_disc
 if [[ -n "$MOVIE_PART_NUMBER" ]]; then
   print_line ""
   print_line "That is part ${MOVIE_PART_NUMBER}. Once every disc is ripped, join them into one film:"
-  print_line "  ./join-parts.sh"
+  print_line "  ./scripts/join-parts.sh"
   exit 0
 fi
 

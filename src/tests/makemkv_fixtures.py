@@ -117,6 +117,21 @@ MSG:5009,0,1,"Encountered 53 errors of type 'Read Error' - see http://www.makemk
 MSG:5005,0,2,"Copy complete. 0 titles saved, 1 failed.","...","0","1"
 """
 
+# A drive that stopped answering mid-rip, trimmed from a real failure. Note
+# what is not here: no SCSI error of any kind. The drive never said it had
+# trouble reading, it simply went away, which is why this reads differently
+# from a damaged disc even though both end in "0 titles saved".
+DRIVE_DROPOUT_OUTPUT = """\
+MSG:1005,0,1,"MakeMKV v1.18.4 darwin(arm64-release) started","%1 started","MakeMKV v1.18.4"
+MSG:3007,0,0,"Using direct disc access mode","Using direct disc access mode"
+MSG:3025,0,0,"Title #1 was added (26 cell(s), 2:03:01)","...","..."
+MSG:2004,0,2,"Error 'OS error - (ipc/send) invalid destination port' occurred while reading '/VIDEO_TS/VTS_01_1.VOB' at offset '2365980672'","...","..."
+MSG:2004,0,2,"Error 'Posix error - Device not configured' occurred while reading '/dev/rdisk4' at offset '2365980672'","...","..."
+MSG:5003,0,2,"Failed to save title 0 to file C1_t00.mkv","Failed to save title %1 to file %2","0","C1_t00.mkv"
+MSG:5009,0,1,"Encountered 23 errors of type 'OS X IPC Error' - see http://www.makemkv.com/errors/ipc/","...","23"
+MSG:5005,0,2,"Copy complete. 0 titles saved, 1 failed.","...","0","1"
+"""
+
 # What an expired beta key looks like: the scan works, the decrypt does not.
 EXPIRED_KEY_OUTPUT = """\
 MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"

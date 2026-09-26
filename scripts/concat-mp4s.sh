@@ -2,8 +2,8 @@
 # Join every mp4 in a folder, in alphabetical order, into one file.
 #
 # Usage:
-#   ./concat-mp4s.sh                    join the mp4s in the current folder
-#   ./concat-mp4s.sh "/path/to/folder"  join the mp4s in that folder
+#   ./scripts/concat-mp4s.sh                    join the mp4s in the current folder
+#   ./scripts/concat-mp4s.sh "/path/to/folder"  join the mp4s in that folder
 #
 # This is the blunt version of join-parts.sh: no name matching, no checking that
 # the pieces were encoded the same way. Whatever is in the folder gets stitched
@@ -19,8 +19,8 @@ FILE_LIST_NAME="filelist.txt"
 usage() {
   cat <<EOF
 Usage:
-  ./concat-mp4s.sh                    join the mp4s in the current folder
-  ./concat-mp4s.sh "/path/to/folder"  join the mp4s in that folder
+  ./scripts/concat-mp4s.sh                    join the mp4s in the current folder
+  ./scripts/concat-mp4s.sh "/path/to/folder"  join the mp4s in that folder
 
 Every .mp4 in the folder is joined in alphabetical order into ${OUTPUT_NAME},
 using ${FILE_LIST_NAME} as the list ffmpeg reads. Nothing is re-encoded.

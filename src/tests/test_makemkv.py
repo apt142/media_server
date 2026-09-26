@@ -10,8 +10,10 @@ from media_server.makemkv import (
     MakeMkv,
     collapse_repeated_messages,
     duration_to_seconds,
+    explain_failure,
     largest_mkv_in,
     parse_disc_scan,
+    parse_messages,
 )
 from tests import makemkv_fixtures
 from tests.fake_makemkv import FakeMakeMkvCommand
@@ -227,6 +229,44 @@ class RippingTests(unittest.TestCase):
 
         self.assertEqual(disc_scan.disc_label, "THE_MATRIX")
         self.assertEqual(fake_command.scanned_count, 1)
+
+
+class FailureExplanationTests(unittest.TestCase):
+    """Every failure ends in "0 titles saved", so the reason is in the detail."""
+
+    def _explain(self, makemkv_output: str) -> str:
+        return explain_failure(parse_messages(makemkv_output))
+
+    def test_a_drive_that_stopped_answering_is_not_called_an_unreadable_disc(self):
+        explanation = self._explain(makemkv_fixtures.DRIVE_DROPOUT_OUTPUT)
+
+        self.assertIn("stopped answering", explanation)
+        self.assertNotIn("expired", explanation)
+
+    def test_a_drive_that_stopped_answering_says_how_to_tell_disc_from_cable(self):
+        explanation = self._explain(makemkv_fixtures.DRIVE_DROPOUT_OUTPUT)
+
+        self.assertIn("other discs", explanation)
+        self.assertIn("cable", explanation)
+
+    def test_a_damaged_disc_is_told_apart_from_a_drive_dropping_out(self):
+        explanation = self._explain(makemkv_fixtures.DAMAGED_DISC_OUTPUT)
+
+        self.assertIn("damaged patch", explanation)
+        self.assertNotIn("stopped answering", explanation)
+
+    def test_an_expired_key_says_to_update_it(self):
+        explanation = self._explain(makemkv_fixtures.EXPIRED_KEY_OUTPUT)
+
+        self.assertIn("key has expired", explanation)
+
+    def test_a_failure_nobody_has_seen_before_points_at_the_messages(self):
+        explanation = explain_failure(["Something entirely new went wrong"])
+
+        self.assertIn("messages are above", explanation)
+
+    def test_saying_nothing_at_all_still_gives_an_explanation(self):
+        self.assertIn("messages are above", explain_failure([]))
 
 
 class OutputDecodingTests(unittest.TestCase):

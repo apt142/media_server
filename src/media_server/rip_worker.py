@@ -22,7 +22,7 @@ from .disc_classifier import (
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
 from .job_catalog import Job, JobCatalog, JobState, RippedDisc
-from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult
+from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult, explain_failure
 from .volume_space import space_at
 
 RAW_FOLDER_NAME = "raw"
@@ -53,6 +53,14 @@ class RipSettings:
     @property
     def minimum_feature_minutes(self) -> int:
         return self.minimum_feature_seconds // 60
+
+
+@dataclass
+class RipAttempt:
+    """What came off a disc, and what MakeMKV said about what did not."""
+
+    ripped_files: list[Path] = field(default_factory=list)
+    refusal_messages: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -246,42 +254,47 @@ class RipWorker:
         titles_to_rip: list[DiscTitle],
     ) -> RipOutcome:
         staged_path = self._staged_path_for(disc_scan)
-        ripped_files = self._rip_titles(titles_to_rip, staged_path)
+        attempt = self._rip_titles(titles_to_rip, staged_path)
 
-        if not ripped_files:
+        if not attempt.ripped_files:
             shutil.rmtree(staged_path, ignore_errors=True)
             return RipOutcome(
                 message=(
-                    "MakeMKV produced no usable files. Its messages are above; "
-                    "an expired key, missing Java on a Blu-ray, or an "
-                    "unreadable disc are the usual causes."
+                    "MakeMKV produced no usable files. "
+                    f"{explain_failure(attempt.refusal_messages)}"
                 )
             )
 
         job_id = self.catalog.record_ripped_disc(
-            self._ripped_disc_for(disc_scan, verdict, staged_path, len(ripped_files))
+            self._ripped_disc_for(
+                disc_scan, verdict, staged_path, len(attempt.ripped_files)
+            )
         )
         self.drive.eject()
 
         return RipOutcome(
             message=(
-                f"Ripped {len(ripped_files)} title(s) as job #{job_id}. "
+                f"Ripped {len(attempt.ripped_files)} title(s) as job #{job_id}. "
                 "The disc is out and the transcode is queued."
             ),
             job_id=job_id,
             is_ripped=True,
-            ripped_files=ripped_files,
+            ripped_files=attempt.ripped_files,
         )
 
     def _rip_titles(
         self, titles_to_rip: list[DiscTitle], staged_path: Path
-    ) -> list[Path]:
+    ) -> RipAttempt:
         """Decrypt each title, carrying on past any that refuse.
 
         One bad episode should not cost the rest of the disc, so a title that
         will not decrypt is reported and skipped rather than ending the run.
+
+        What MakeMKV said about the refusals is carried back out. When nothing
+        at all came off the disc, those messages are the only thing that knows
+        why.
         """
-        ripped_files = []
+        attempt = RipAttempt()
         for title in titles_to_rip:
             self.announce(f"Reading {title.describe()}")
             title_path = staged_path / f"title-{title.title_id:02d}"
@@ -289,11 +302,12 @@ class RipWorker:
             rip_result = self.makemkv.rip_title(title.title_id, title_path)
             if not rip_result.is_ripped:
                 self._announce_refusal(title, rip_result)
+                attempt.refusal_messages.extend(rip_result.messages)
                 shutil.rmtree(title_path, ignore_errors=True)
                 continue
-            ripped_files.append(rip_result.ripped_file)
+            attempt.ripped_files.append(rip_result.ripped_file)
 
-        return ripped_files
+        return attempt
 
     def _announce_refusal(self, title: DiscTitle, rip_result: RipResult) -> None:
         """Pass on what MakeMKV said about a title it would not decrypt.

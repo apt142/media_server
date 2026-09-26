@@ -7,7 +7,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 usage() {
   cat <<EOF
-Usage: ./setup.sh [--computer-name NAME]
+Usage: ./scripts/setup.sh [--computer-name NAME]
 
 Installs the media-server stack on this Mac:
   Plex Media Server, HandBrake, MakeMKV, ~/Media folders, SMB share, stay-awake on power.
@@ -228,9 +228,12 @@ Setup finished. The remaining steps are in README.md, in order:
        smb://${host_name}.local/${SHARE_NAME}
        Sign in as $(id -un) on this Mac.
 
-Then:
-  ./status.sh
-  ./rip-dvd.sh "Movie Title" 1999
+Then, to rip:
+  ./media-server status
+  ./media-server rip
+
+The one-off scripts in ./scripts are for fixing and adjusting what is already
+in the library. See src/README.md for the pipeline that does the ripping.
 EOF
 }
 

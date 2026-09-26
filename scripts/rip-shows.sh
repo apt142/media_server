@@ -25,7 +25,7 @@ is_copying_without_encode=0
 usage() {
   cat <<EOF
 Usage:
-  ./rip-shows.sh [--show "Show Name"] [--season N] [--episode N]
+  ./scripts/rip-shows.sh [--show "Show Name"] [--season N] [--episode N]
 
 Rips every episode on a TV disc in one pass. Works with DVD and Blu-ray, and
 picks the HandBrake preset from whichever it finds.
@@ -264,8 +264,8 @@ identify_show() {
 
   if [[ "$is_asking_before_choices" -eq 0 ]]; then
     print_error "Cannot work out which show this disc is."
-    print_line "Name it:      ./rip-shows.sh --show \"Show Name\""
-    print_line "Or search:    ./rip-shows.sh --ask"
+    print_line "Name it:      ./scripts/rip-shows.sh --show \"Show Name\""
+    print_line "Or search:    ./scripts/rip-shows.sh --ask"
     exit 1
   fi
 
@@ -312,8 +312,8 @@ identify_season() {
 
   if [[ "$is_asking_before_choices" -eq 0 ]]; then
     print_error "Cannot tell which season this disc is."
-    print_line "Say so:    ./rip-shows.sh --season N"
-    print_line "Or pick:   ./rip-shows.sh --ask"
+    print_line "Say so:    ./scripts/rip-shows.sh --season N"
+    print_line "Or pick:   ./scripts/rip-shows.sh --ask"
     exit 1
   fi
 
@@ -556,7 +556,7 @@ require_macos
 require_not_root
 
 if [[ ! -x "$MAKE_MKV_COMMAND" ]]; then
-  print_error "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
+  print_error "MakeMKV is not installed. Run ./scripts/setup.sh on the server Mac first."
   exit 1
 fi
 
@@ -585,7 +585,7 @@ fi
 
 if [[ "$is_copying_without_encode" -eq 0 ]]; then
   if ! handbrake_command >/dev/null; then
-    print_error "HandBrakeCLI is not installed. Run ./setup.sh on the server Mac first."
+    print_error "HandBrakeCLI is not installed. Run ./scripts/setup.sh on the server Mac first."
     exit 1
   fi
   choose_handbrake_preset

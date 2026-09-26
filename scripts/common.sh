@@ -368,7 +368,7 @@ require_free_space_for() {
   print_line "  free     ${free_gigabytes} GB where $(resolved_media_root) lives"
   print_line ""
   print_line "Clear some room, or move the library to an external drive:"
-  print_line "  ./move-library-to-usb.sh /Volumes/YourDrive"
+  print_line "  ./scripts/move-library-to-usb.sh /Volumes/YourDrive"
   exit 1
 }
 

@@ -40,10 +40,10 @@ QUEUE_TITLE_WIDTH = 40
 DELIVERED_JOBS_SHOWN = 5
 
 MAKEMKV_MISSING_MESSAGE = (
-    "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
+    "MakeMKV is not installed. Run ./scripts/setup.sh on the server Mac first."
 )
 HANDBRAKE_MISSING_MESSAGE = (
-    "HandBrakeCLI is not installed. Run ./setup.sh on the server Mac first."
+    "HandBrakeCLI is not installed. Run ./scripts/setup.sh on the server Mac first."
 )
 
 STATE_DESCRIPTIONS = {
@@ -371,7 +371,7 @@ def write_sample_configuration(
 
 
 def print_title_table(disc_scan) -> None:
-    """The titles on the disc, the way ./rip-dvd.sh --list shows them."""
+    """The titles on the disc, the way ./scripts/rip-dvd.sh --list shows them."""
     print(f"{'TITLE':<6} {'LENGTH':<10} {'SIZE':<9} {'SOURCE':<14} {'FLAG':<6} NAME")
     for title in disc_scan.titles:
         main_feature_flag = "main" if title.is_main_feature else "-"

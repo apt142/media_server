@@ -18,8 +18,8 @@ is_keeping_parts=0
 usage() {
   cat <<EOF
 Usage:
-  ./join-parts.sh                     join every split film in the library
-  ./join-parts.sh "/path/to/Movie (2001)"
+  ./scripts/join-parts.sh                     join every split film in the library
+  ./scripts/join-parts.sh "/path/to/Movie (2001)"
                                       join one film's folder
 
 Looks for files named "Movie (Year) - part1.mkv", "- part2.mkv" and so on, and

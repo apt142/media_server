@@ -16,11 +16,11 @@ is_listing_only=0
 usage() {
   cat <<EOF
 Usage:
-  ./rip.sh [--movie|--tv] [options passed through to the ripper]
+  ./scripts/rip.sh [--movie|--tv] [options passed through to the ripper]
 
 Reads the disc, works out whether it holds a film or episodes of a show, then
-runs ./rip-dvd.sh or ./rip-shows.sh accordingly. Anything else you pass is
-handed to whichever one it picks.
+runs ./scripts/rip-dvd.sh or ./scripts/rip-shows.sh accordingly. Anything else
+you pass is handed to whichever one it picks.
 
 It decides from the shape of the disc. A film disc has one dominant title with
 shorter extras around it. An episode disc has several titles of near-identical
@@ -32,10 +32,10 @@ length. Season and disc numbering on the label counts too.
   -h, --help             Show this help
 
 Examples:
-  ./rip.sh                          decide, then rip
-  ./rip.sh --what-is-it             just tell me
-  ./rip.sh --subtitle-langs eng     decide, then rip keeping English subtitles
-  ./rip.sh --tv --season 2          override the guess
+  ./scripts/rip.sh                          decide, then rip
+  ./scripts/rip.sh --what-is-it             just tell me
+  ./scripts/rip.sh --subtitle-langs eng     decide, then rip keeping English subtitles
+  ./scripts/rip.sh --tv --season 2          override the guess
 
 Only rip discs you own.
 EOF
@@ -71,7 +71,7 @@ require_macos
 require_not_root
 
 if [[ ! -x "$MAKE_MKV_COMMAND" ]]; then
-  print_error "MakeMKV is not installed. Run ./setup.sh on the server Mac first."
+  print_error "MakeMKV is not installed. Run ./scripts/setup.sh on the server Mac first."
   exit 1
 fi
 

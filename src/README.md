@@ -169,7 +169,7 @@ Ripped 4 title(s) as job #2. The disc is out and the transcode is queued.
 
 To look before you leap, `scan` does the same reading and prints the titles
 without touching the disc otherwise — the equivalent of the old
-`./rip-dvd.sh --list`.
+`./scripts/rip-dvd.sh --list`.
 
 ### What gets ripped
 
@@ -212,6 +212,24 @@ It is reported and skipped, and the rest of the disc carries on. One bad
 episode should not cost you the other five. If *every* title fails, no job is
 recorded and the staging folder is cleaned up, so a failed disc leaves nothing
 behind to confuse the queue.
+
+MakeMKV ends every failure with the same "0 titles saved" line whatever went
+wrong, so the reason is read out of the messages above it and said plainly:
+
+| What the messages say | What it means |
+|---|---|
+| `L-EC UNCORRECTABLE`, `MEDIUM ERROR` | The drive read the disc and the data was bad. A damaged patch — clean the disc from the centre outwards |
+| `ipc/send`, `Device not configured` | The drive stopped answering entirely. Either this disc makes the drive give up, or the cable and power need looking at |
+| `evaluation period has expired` | The key needs updating |
+
+The difference between the first two matters more than it looks. A medium
+error means the drive tried and the disc lost; a device that stopped being
+configured means the drive never reported trouble at all, it just went away.
+Cleaning a disc fixes one of those and not the other.
+
+Anything not on this list falls back to pointing at the raw messages. Guessing
+at wording MakeMKV might use would mean confidently naming the wrong cause,
+which sends you off fixing something that was never broken.
 
 ### Titles are provisional for now
 

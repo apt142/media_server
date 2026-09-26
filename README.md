@@ -8,7 +8,20 @@ Turn a **MacBook Pro M1 running macOS Tahoe** into a home media server:
 
 Copy this folder onto **that** MacBook (AirDrop, USB stick, or a git clone). Run every command below on the server Mac, not on some other computer.
 
-`setup.sh` installs apps and turns on sharing. It cannot finish Plex, MakeMKV, or macOS permission prompts. Those steps are in this README, in order.
+`scripts/setup.sh` installs apps and turns on sharing. It cannot finish Plex, MakeMKV, or macOS permission prompts. Those steps are in this README, in order.
+
+## How this repo is laid out
+
+| | |
+|---|---|
+| `./media-server` | **The ripping pipeline. Start here.** Queues discs, transcodes the backlog, delivers to the library. Documented in [src/README.md](src/README.md) |
+| `src/` | The code behind `./media-server`, with its tests |
+| `scripts/` | One-off tools: install the machine, fix a bad rip, join split files, move the library |
+| `README.md` | This file: setting the Mac up, and what the scripts do |
+
+**Rip with `./media-server`.** It is the thorough version: a disc goes in, gets ripped, and the transcode queues up behind it so you can feed a stack of discs through without waiting. It survives crashes, reboots, and an unplugged library drive, and it can run unattended as a background service.
+
+The shell scripts in `scripts/` came first and still work. Reach for them to set the machine up, and afterwards to fix, adjust, or convert something that is already on disk — not as the everyday way to rip.
 
 ## What you get
 
@@ -20,7 +33,7 @@ Copy this folder onto **that** MacBook (AirDrop, USB stick, or a git clone). Run
   Rips/       temporary MakeMKV output while ripping
 ```
 
-Plex and the SMB share both use `~/Media`. Later, `./move-library-to-usb.sh` copies that tree to a USB disk and replaces `~/Media` with a symlink, so Plex and the share keep the same path.
+Plex and the SMB share both use `~/Media`. Later, `./scripts/move-library-to-usb.sh` copies that tree to a USB disk and replaces `~/Media` with a symlink, so Plex and the share keep the same path.
 
 ## Before you start
 
@@ -41,11 +54,11 @@ Copy this project onto the server Mac, then:
 
 ```bash
 cd ~/Documents/media-server    # or wherever you put the folder
-chmod +x setup.sh rip-dvd.sh move-library-to-usb.sh status.sh fix-rip.sh
-./setup.sh --computer-name MediaServer
+chmod +x media-server scripts/*.sh
+./scripts/setup.sh --computer-name MediaServer
 ```
 
-`--computer-name MediaServer` is optional but recommended. It makes the share `smb://MediaServer.local/Media` instead of whatever name the laptop shipped with. If you skip it, `./status.sh` prints the name to use.
+`--computer-name MediaServer` is optional but recommended. It makes the share `smb://MediaServer.local/Media` instead of whatever name the laptop shipped with. If you skip it, `./scripts/status.sh` prints the name to use.
 
 The script will ask for the Mac password (File Sharing and power settings). It then:
 
@@ -105,7 +118,7 @@ The path is the same on Tahoe. Plex is not a top-level Settings item. It only ap
 
 1. System Settings → **Privacy & Security** → **Removable Volumes**.
 2. Turn on **MakeMKV**.
-3. If you rip with `./rip-dvd.sh` from Terminal, also turn on **Terminal** (or **iTerm**, if that is what you use).
+3. If you rip with `./scripts/rip-dvd.sh` from Terminal, also turn on **Terminal** (or **iTerm**, if that is what you use).
 
 **Login Items** (Plex should start when you log in):
 
@@ -176,7 +189,7 @@ Then set:
 | **Network** | Keep **Enable local network discovery (GDM)** on. That is how the Roku finds the server. |
 | **Language** | Optional. Set the agent language if you care about metadata language. |
 
-Hardware transcoding in Plex is a paid Plex Pass feature. You do not need it if you rip with `./rip-dvd.sh`, which already converts to H.264 the Roku can play directly.
+Hardware transcoding in Plex is a paid Plex Pass feature. You do not need it if you rip with `./scripts/rip-dvd.sh`, which already converts to H.264 the Roku can play directly.
 
 Close the settings. The empty libraries are fine until you rip something.
 
@@ -192,7 +205,7 @@ Close the settings. The empty libraries are fine until you rip something.
 
 If the server does not appear:
 
-- On the server Mac, run `./status.sh`. **Plex running** and **smbd running** should both say yes.
+- On the server Mac, run `./scripts/status.sh`. **Plex running** and **smbd running** should both say yes.
 - Confirm Local Network permission for Plex (section 3).
 - On the Roku Plex app, look for a **manual connection** / **enter IP** option. On the server Mac, System Settings → **Wi-Fi** → Details, copy the IP (something like `192.168.1.42`) and enter it. Default Plex port is `32400`.
 - Reboot the Roku after Plex is signed in and the server is claimed.
@@ -212,7 +225,7 @@ On a **client** Mac (not the server):
    smb://MediaServer.local/Media
    ```
 
-   If you did not pass `--computer-name`, use the Bonjour name from `./status.sh` on the server (`smb://Whatever.local/Media`).
+   If you did not pass `--computer-name`, use the Bonjour name from `./scripts/status.sh` on the server (`smb://Whatever.local/Media`).
 3. Connect as **Registered User**.
 4. Name and password are the **server Mac’s** login, not the client Mac’s.
 5. Check **Remember this password in my keychain** if you want it to remount later.
@@ -228,7 +241,7 @@ To reconnect after a reboot: Finder sidebar, or the same ⌘K address.
 On the server Mac:
 
 ```bash
-./status.sh
+./scripts/status.sh
 ```
 
 You want:
@@ -248,7 +261,48 @@ Then, from another Mac, mount the share. On the Roku, open Plex and confirm the 
 Put the disc in, run one command, walk away:
 
 ```bash
-./rip.sh
+./media-server rip
+```
+
+The disc is ripped and ejected, and the transcode is queued behind it. Ripping is bound by the optical drive and transcoding is bound by the CPU, so splitting them is what lets you feed a stack of discs through in an afternoon while the encodes catch up overnight:
+
+```bash
+./media-server rip       # repeat per disc, each takes 25-40 minutes
+./media-server encode    # work the whole backlog, then deliver it
+./media-server status    # what is where, and how much room is left
+```
+
+Or install it as a background service and stop typing anything at all — put a disc in, take it out when it pops, repeat:
+
+```bash
+./media-server install-agents
+```
+
+**[src/README.md](src/README.md) is the full documentation** for this: every command, how the queue works, how discs are recognised, what happens when the library drive is unplugged, and how to run it unattended.
+
+---
+
+## The older scripts
+
+Everything below documents `scripts/`, which is where this project started. The scripts still work and you still need `scripts/setup.sh` to install the machine. Afterwards their value is in the one-offs: checking a file will play, repairing a stalled rip, joining a split film, moving the library to a different drive.
+
+| Script | What it is for |
+|---|---|
+| `setup.sh` | Installs Plex, HandBrake, MakeMKV, the `~/Media` tree, and SMB sharing |
+| `status.sh` | Checks the machine: tools installed, Plex running, share up, sleep settings |
+| `check-rip.sh` | Says whether a finished file will play on a Roku without transcoding |
+| `fix-rip.sh` | Repairs a rip that stalls partway through playback |
+| `join-parts.sh` | Merges `- part1` / `- part2` files into one film |
+| `concat-mp4s.sh` | Joins every mp4 in a folder, in name order, no questions asked |
+| `move-library-to-usb.sh` | Moves `~/Media` to an external drive and symlinks it back |
+| `rip.sh`, `rip-dvd.sh`, `rip-shows.sh` | The original rippers. `./media-server` is the maintained path now |
+
+The rippers take a disc all the way through in one pass, which means the drive sits idle for the hours HandBrake is working. That is the thing `./media-server` was built to fix.
+
+### The original rippers
+
+```bash
+./scripts/rip.sh
 ```
 
 No flags, no questions. It identifies the disc, looks the title up, rips it, files it where Plex will find it, and ejects the disc when it is done. The ejected disc is the signal that it finished.
@@ -257,7 +311,7 @@ Nothing prompts by default. Where it has to choose — which film the label refe
 
 There are two things it will not guess, because guessing would be worse than stopping: a film whose title it cannot find, and a TV disc whose show or season it cannot work out. Those stop with an error telling you the flag to add.
 
-It reads the disc, decides whether it holds a film or episodes of a show, and hands off to `rip-dvd.sh` or `rip-shows.sh`. Any other flags you pass go through to whichever it picks, so `./rip.sh --subtitle-langs eng` works the same either way.
+It reads the disc, decides whether it holds a film or episodes of a show, and hands off to `scripts/rip-dvd.sh` or `scripts/rip-shows.sh`. Any other flags you pass go through to whichever it picks, so `./scripts/rip.sh --subtitle-langs eng` works the same either way.
 
 It decides from the shape of the disc rather than the label. A film disc has one dominant title surrounded by shorter extras; an episode disc has several titles of near-identical length, because episodes run to the same slot. A season number on the label counts as further evidence; a bare disc number counts for less, since plenty of films ship as `KNIVES_OUT_FEATURE_DISC1`. It tells you what it concluded and why:
 
@@ -266,7 +320,7 @@ This looks like a TV disc: two titles run to almost exactly the same length,
 and the label "FIREFLY_D1" carries season or disc numbering.
 ```
 
-That combination is why it handles Firefly's first disc correctly despite the feature-length pilot sitting next to two ordinary episodes. Check without ripping using `./rip.sh --what-is-it`, and overrule it with `--movie` or `--tv`.
+That combination is why it handles Firefly's first disc correctly despite the feature-length pilot sitting next to two ordinary episodes. Check without ripping using `./scripts/rip.sh --what-is-it`, and overrule it with `--movie` or `--tv`.
 
 ---
 
@@ -279,19 +333,19 @@ On the server Mac:
 3. Run, with a disc in the drive:
 
    ```bash
-   ./rip-dvd.sh
+   ./scripts/rip-dvd.sh
    ```
 
    That reads the disc label (often something like `THE_MATRIX`) and looks it up in Apple’s movie catalog. Pick a number, or type `Title 1999` yourself. To skip the prompt and take the first match:
 
    ```bash
-   ./rip-dvd.sh --yes
+   ./scripts/rip-dvd.sh --yes
    ```
 
    You can still name it by hand:
 
    ```bash
-   ./rip-dvd.sh "The Matrix" 1999
+   ./scripts/rip-dvd.sh "The Matrix" 1999
    ```
 
    Disc labels are not a fingerprint. Box-set discs, “DVD_VIDEO”, and TV seasons often miss or match the wrong film — read the list before you accept it.
@@ -312,7 +366,7 @@ Older rips done with the original script used a VideoToolbox quality setting tha
 
 Then in Plex: Movies → **Scan Library Files**. On the Roku, open Movies and play it.
 
-**TV discs:** use [`./rip-shows.sh`](#rip-a-tv-series). `rip-dvd.sh` is movies only — its old `--tv` mode guessed the show from the disc label alone, which is what misnamed the Firefly episodes, and it has been removed.
+**TV discs:** use [`./scripts/rip-shows.sh`](#rip-a-tv-series). `scripts/rip-dvd.sh` is movies only — its old `--tv` mode guessed the show from the disc label alone, which is what misnamed the Firefly episodes, and it has been removed.
 
 Flags:
 
@@ -326,7 +380,7 @@ Flags:
 - `--min-length 3600` — skip titles under an hour (trailers, extras).
 - `--keep-raw` — keep the decrypted `.mkv` under `~/Media/Rips/raw`
 - `--direct` — skip HandBrake and keep the DVD MPEG-2 stream as `.mkv`. Closest to the disc. Plex will transcode that for the Roku; 480p on an M1 is light.
-- `--part N` — this disc is part N of a film split over several discs; join them with `./join-parts.sh`
+- `--part N` — this disc is part N of a film split over several discs; join them with `./scripts/join-parts.sh`
 - `--ask` — confirm the title instead of taking the best match
 - `--no-eject` — leave the disc in the drive when it finishes
 
@@ -339,7 +393,7 @@ Blu-rays rarely have one obvious movie on them. A disc may carry the feature, a 
 List what is actually on the disc:
 
 ```bash
-./rip-dvd.sh --list
+./scripts/rip-dvd.sh --list
 ```
 
 ```
@@ -356,15 +410,15 @@ With no flag to go on, judge by **length**, not size. The commentary version abo
 Then rip that one:
 
 ```bash
-./rip-dvd.sh --title 0 "Knives Out" 2019
+./scripts/rip-dvd.sh --title 0 "Knives Out" 2019
 ```
 
-`--title` is for movies. TV discs are handled by [`rip-shows.sh`](#rip-a-tv-series), which rips every episode-length title.
+`--title` is for movies. TV discs are handled by [`scripts/rip-shows.sh`](#rip-a-tv-series), which rips every episode-length title.
 
 Unsure between two? Rip the candidate without encoding, which is much faster, and play it to check:
 
 ```bash
-./rip-dvd.sh --title 0 --direct --keep-raw "Knives Out" 2019
+./scripts/rip-dvd.sh --title 0 --direct --keep-raw "Knives Out" 2019
 ```
 
 The script picks the `main`-flagged title when one exists, otherwise the longest. It used to rip every title and keep the largest file, which is what sent a commentary cut into the library.
@@ -374,7 +428,7 @@ The script picks the `main`-flagged title when one exists, otherwise the longest
 When the disc is fighting you, stop guessing and pull all of it:
 
 ```bash
-./rip-dvd.sh --all "Knives Out"
+./scripts/rip-dvd.sh --all "Knives Out"
 ```
 
 It decrypts every title over the minimum length into one folder and stops there. **Nothing is encoded and nothing is added to Plex** — this is a staging area, not a library.
@@ -394,7 +448,7 @@ Some titles will fail on a protected disc. That is expected: decoy playlists are
 Once you know which one you want, either encode it properly:
 
 ```bash
-./rip-dvd.sh --title 0 "Knives Out" 2019
+./scripts/rip-dvd.sh --title 0 "Knives Out" 2019
 ```
 
 or, if the raw file is good enough, move it into place yourself. Plex reads the folder name, so it needs to land as `~/Media/Movies/Knives Out (2019)/Knives Out (2019).mkv`. Delete the staging folder when you are done — it is large and Plex does not index it.
@@ -410,7 +464,7 @@ This used to use Apple's iTunes Search API for films. That endpoint still answer
 Wikidata is queried by the cleaned disc label. `KNIVES_OUT_FEATURE_DISC1` becomes a search for `KNIVES OUT`, and results are ranked by how closely they match, so the film wins over its sequels and over stage adaptations of it. You can always skip the lookup:
 
 ```bash
-./rip-dvd.sh "Knives Out" 2019
+./scripts/rip-dvd.sh "Knives Out" 2019
 ```
 
 It is a public wiki, so occasionally a disc will not match. When the lookup finds nothing the script stops and tells you to name the film yourself rather than filing it under the disc label.
@@ -433,8 +487,8 @@ The speed is `slow` rather than the `veryslow` these presets ask for, which does
 Earlier versions used plain `HQ 1080p30 Surround` for Blu-ray, which is RF 20 on the faster `slow` preset. That encoded your Blu-rays *less* carefully than your DVDs, which is why they looked softer than expected. If you ripped Blu-rays before this change, they are worth doing again.
 
 ```bash
-./rip.sh --quality 16          # better, larger, slower
-./rip.sh --quality 20          # faster, smaller, softer
+./scripts/rip.sh --quality 16          # better, larger, slower
+./scripts/rip.sh --quality 20          # faster, smaller, softer
 ```
 
 ### Speed, and why it is not the same as quality
@@ -446,7 +500,7 @@ This costs nothing you can see, which is the part worth understanding. **RF is t
 If you would rather have the smaller file and can spare the hours, ask for it:
 
 ```bash
-./rip.sh --speed veryslow
+./scripts/rip.sh --speed veryslow
 ```
 
 What you should *not* do is reach for `--preset "HQ 1080p30 Surround"` to save time. That preset changes the effort *and* raises RF to 20, giving back the quality the Super HQ default exists to protect. Change one thing at a time: `--speed` for time, `--quality` for quality.
@@ -465,7 +519,7 @@ So about **three hours start to finish**, or 5-7 hours for the encode alone at `
 If you want the disc exactly, do not encode at all:
 
 ```bash
-./rip.sh --direct
+./scripts/rip.sh --direct
 ```
 
 That copies the original video stream untouched. It is genuinely identical to the disc and about 30 GB for a Blu-ray. Plex will transcode it on the fly for the Roku, which the M1 handles.
@@ -475,7 +529,7 @@ That copies the original video stream untouched. It is genuinely identical to th
 The presets produce AAC stereo plus the surround track, which is what a Roku wants. Blu-ray lossless formats (TrueHD, DTS-HD) cannot go in an MP4 at all, so they are converted to AC3 5.1 — you keep surround, not the lossless master. To keep the original tracks, ask for audio languages, which switches the output to MKV and allows passthrough:
 
 ```bash
-./rip.sh --audio-langs eng
+./scripts/rip.sh --audio-langs eng
 ```
 
 ---
@@ -485,11 +539,11 @@ The presets produce AAC stereo plus the surround track, which is what a Roku wan
 Extended editions often split one film over two Blu-rays — the Lord of the Rings extended editions do. Rip each disc with its part number, then join them:
 
 ```bash
-./rip.sh --part 1 "The Lord of the Rings: The Fellowship of the Ring" 2001
+./scripts/rip.sh --part 1 "The Lord of the Rings: The Fellowship of the Ring" 2001
 # swap discs
-./rip.sh --part 2 "The Lord of the Rings: The Fellowship of the Ring" 2001
+./scripts/rip.sh --part 2 "The Lord of the Rings: The Fellowship of the Ring" 2001
 
-./join-parts.sh
+./scripts/join-parts.sh
 ```
 
 That leaves one file, `The Lord of the Rings - The Fellowship of the Ring (2001).mkv`, and removes the parts.
@@ -516,8 +570,8 @@ Two things it checks before touching anything. It refuses to join parts that wer
 ## Check a rip will actually play on the Roku
 
 ```bash
-./check-rip.sh                                  # everything in the library
-./check-rip.sh ~/Media/Movies/Knives\ Out\ \(2019\)/*.mp4
+./scripts/check-rip.sh                                  # everything in the library
+./scripts/check-rip.sh ~/Media/Movies/Knives\ Out\ \(2019\)/*.mp4
 ```
 
 Plex hides this problem rather than reporting it. A file the Roku cannot decode still "works" — Plex silently re-encodes it in real time, and that is where stuttering, buffering and outright playback failures come from. This tells you which it is:
@@ -531,20 +585,20 @@ Knives Out (2019).mp4
 
 A Roku decodes H.264 in hardware and is strict about it: High profile, level 4.2 at most, and no more than 4 reference frames at 1080p. Exceed any of those and it hands the file back to Plex. The rippers now pin profile and level explicitly (`high`, level 4.0 for Blu-ray and 3.1 for DVD) so this cannot drift, but the checker is the way to confirm what you already have on disk.
 
-Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD) and image-based subtitles (PGS, VOBSUB) both force Plex to transcode, and both only appear if you asked for them with `--audio-langs` or `--subtitle-langs`. If a Roku is your main player, plain `./rip.sh` avoids both.
+Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD) and image-based subtitles (PGS, VOBSUB) both force Plex to transcode, and both only appear if you asked for them with `--audio-langs` or `--subtitle-langs`. If a Roku is your main player, plain `./scripts/rip.sh` avoids both.
 
 ---
 
 ## Languages and subtitles
 
-**This needs `./setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./status.sh`, under **MakeMKV track selection**.
+**This needs `./scripts/setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./scripts/status.sh`, under **MakeMKV track selection**.
 
-Then ask for what you want, on either ripper or through `rip.sh`:
+Then ask for what you want, on either ripper or through `scripts/rip.sh`:
 
 ```bash
-./rip.sh --audio-langs eng,spa
-./rip.sh --subtitle-langs eng
-./rip.sh --audio-langs eng,fra --subtitle-langs eng,fra
+./scripts/rip.sh --audio-langs eng,spa
+./scripts/rip.sh --subtitle-langs eng
+./scripts/rip.sh --audio-langs eng,fra --subtitle-langs eng,fra
 ```
 
 Languages are three-letter codes: `eng`, `spa`, `fra`, `deu`, `jpn`.
@@ -559,10 +613,10 @@ Default behaviour with no flags is unchanged: English audio, no subtitles, MP4.
 
 ## Rip a TV series
 
-`rip-shows.sh` is the TV ripper. It reads a whole disc in one pass, works out which episodes are on it, and names them the way Plex wants. DVD and Blu-ray both work, and it picks the encoding preset from whichever it finds.
+`scripts/rip-shows.sh` is the TV ripper. It reads a whole disc in one pass, works out which episodes are on it, and names them the way Plex wants. DVD and Blu-ray both work, and it picks the encoding preset from whichever it finds.
 
 ```bash
-./rip-shows.sh
+./scripts/rip-shows.sh
 ```
 
 That is usually the entire command. It prints what it worked out, shows you the episode list, and waits for a yes before touching anything:
@@ -607,7 +661,7 @@ Every plan says which it is, and that distinction is worth reading:
 **Not confident** means the disc could sit in several places and nothing ruled the others out. This is normal and expected for a mid-season disc of a show where every episode runs 44 minutes; there is genuinely no way to tell disc 3 from disc 4 by content alone. Read the episode names before saying yes. If they are wrong, say where to start:
 
 ```bash
-./rip-shows.sh --episode 9
+./scripts/rip-shows.sh --episode 9
 ```
 
 If you give `--episode` and the lengths disagree with it, it tells you so rather than quietly going along:
@@ -627,7 +681,7 @@ When that happens, set the show to DVD order in Plex too, or Plex's metadata wil
 `--list` runs the whole identification and prints the plan without ripping:
 
 ```bash
-./rip-shows.sh --list
+./scripts/rip-shows.sh --list
 ```
 
 Files land as:
@@ -662,7 +716,13 @@ Then in Plex: **TV** library → **Scan Library Files**.
 The identification logic has unit tests. They stub out Wikidata and TVmaze, so they run offline in well under a second:
 
 ```bash
-python3 -m unittest test_show_lookup test_movie_lookup
+cd scripts && python3 -m unittest test_show_lookup test_movie_lookup
+```
+
+The pipeline under `src/` has its own suite, run separately:
+
+```bash
+cd src && python3 -m unittest discover -s tests -t .
 ```
 
 Worth running if you change how discs are identified. They cover the Play All and duplicate-playlist filtering, disc label parsing, the confidence rules behind an episode mapping, whether a disc reads as a film or a show, and the film ranking that keeps a sequel or a stage adaptation from beating the film you actually put in the drive.
@@ -686,7 +746,7 @@ This matters because MakeMKV does not stop politely when the disk fills. It writ
 If the internal disk is tight, move the library to an external drive — the rippers then stage through it too:
 
 ```bash
-./move-library-to-usb.sh /Volumes/YourDrive
+./scripts/move-library-to-usb.sh /Volumes/YourDrive
 ```
 
 ---
@@ -696,7 +756,7 @@ If the internal disk is tight, move the library to an external drive — the rip
 When the internal disk fills up:
 
 ```bash
-./move-library-to-usb.sh /Volumes/YourDrive
+./scripts/move-library-to-usb.sh /Volumes/YourDrive
 ```
 
 That copies `~/Media` to `YourDrive/Media`, points `~/Media` at it, and leaves `~/Media.internal-backup` until you have watched something on the Roku and mounted the share from another Mac. Then:
@@ -729,7 +789,7 @@ The address is:
 vnc://MediaServer.local
 ```
 
-If you did not rename the laptop, `./status.sh` prints the Bonjour name.
+If you did not rename the laptop, `./scripts/status.sh` prints the Bonjour name.
 
 ### On the Mac you sit at
 
@@ -768,7 +828,7 @@ Quit Screen Sharing when you are done. Plex and the SMB share keep running; you 
 
 ## Keep it awake
 
-`setup.sh` sets **idle sleep to never while plugged in**. The screen can still sleep. That is enough if the lid stays open.
+`scripts/setup.sh` sets **idle sleep to never while plugged in**. The screen can still sleep. That is enough if the lid stays open.
 
 Closing the lid on an M1 MacBook is separate. Apple Silicon still sleeps unless a display is attached (clamshell). Options:
 
@@ -784,7 +844,7 @@ Keep it plugged in. A laptop used as a 24/7 server on battery will ruin the batt
 
 **Roku cannot see Plex**
 
-- Plex Media Server is running (`./status.sh`).
+- Plex Media Server is running (`./scripts/status.sh`).
 - Same Wi-Fi, not guest / AP isolation.
 - Local Network permission for Plex is on.
 - You signed into the Roku app with the **same** Plex account that claimed the server.
@@ -820,7 +880,7 @@ Then point MakeMKV at it, either in the app (**MakeMKV → Preferences → Prote
 printf 'app_Java = "/opt/homebrew/opt/openjdk@17/bin/java"\n' >> ~/Library/MakeMKV/settings.conf
 ```
 
-Give it the path to the `java` **executable**, not the folder. Quit MakeMKV fully and reopen it. `setup.sh` now does all of this for you.
+Give it the path to the `java` **executable**, not the folder. Quit MakeMKV fully and reopen it. `scripts/setup.sh` now does all of this for you.
 
 To confirm it took, scan the disc and look for the Java line:
 
@@ -830,7 +890,7 @@ To confirm it took, scan the disc and look for the Java line:
 
 You want `Using Java runtime from /opt/homebrew/opt/openjdk@17/bin/java`. If it still says `/usr/bin/java`, the setting did not save — check whether your MakeMKV keeps settings in `~/.MakeMKV/settings.conf` instead.
 
-`./status.sh` also reports which Java MakeMKV is set to use, and whether that path actually works.
+`./scripts/status.sh` also reports which Java MakeMKV is set to use, and whether that path actually works.
 
 Your system `java` can stay on whatever version you like; this setting only affects MakeMKV.
 
@@ -841,20 +901,20 @@ That is the file, not Wi-Fi. DVD detelecine can leave a *variable* frame rate or
 On the server Mac, stop the Roku, then remux (seconds):
 
 ```bash
-./fix-rip.sh ~/Media/Movies/"Movie Title (Year)"/"Movie Title (Year)".mp4
+./scripts/fix-rip.sh ~/Media/Movies/"Movie Title (Year)"/"Movie Title (Year)".mp4
 ```
 
 Plex → Scan Library Files, try that title again. If it still stalls, rebuild it at a constant frame rate (as long as a new rip):
 
 ```bash
-./fix-rip.sh --reencode ~/Media/Movies/"Movie Title (Year)"/"Movie Title (Year)".mp4
+./scripts/fix-rip.sh --reencode ~/Media/Movies/"Movie Title (Year)"/"Movie Title (Year)".mp4
 ```
 
-The broken file is kept as `*.stalled.mp4` next to the replacement. New rips from `./rip-dvd.sh` already force a constant frame rate.
+The broken file is kept as `*.stalled.mp4` next to the replacement. New rips from `./scripts/rip-dvd.sh` already force a constant frame rate.
 
 **Plex finds the file but the Roku transcodes or buffers**
 
-- Default `./rip-dvd.sh` now writes H.264 Super HQ. A `--direct` `.mkv` is MPEG-2 and Plex will transcode it for the Roku; that is expected and cheap at 480p.
+- Default `./scripts/rip-dvd.sh` now writes H.264 Super HQ. A `--direct` `.mkv` is MPEG-2 and Plex will transcode it for the Roku; that is expected and cheap at 480p.
 - Confirm you are playing the file under `Movies/`, not a leftover in `Rips/`.
 
 **Plex does not start at login**
@@ -865,7 +925,7 @@ The broken file is kept as `*.stalled.mp4` next to the replacement. New rips fro
 
 ## Manual equivalent
 
-If you would rather click than run `setup.sh`, do this on the server Mac, then continue from section 2.
+If you would rather click than run `scripts/setup.sh`, do this on the server Mac, then continue from section 2.
 
 1. Install [Homebrew](https://brew.sh), then:
 

@@ -332,6 +332,38 @@ class UnreadableDiscTests(RipWorkerTestCase):
         announced_output = "\n".join(self.announced_lines)
         self.assertIn("evaluation period has expired", announced_output)
 
+    def test_a_drive_that_stopped_answering_is_named_as_the_cause(self):
+        """The old message blamed a key or an unreadable disc, neither of which
+        is what happens when the drive drops off the bus mid-rip."""
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.DRIVE_DROPOUT_OUTPUT,
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertIn("stopped answering", outcome.message)
+        self.assertNotIn("expired key", outcome.message)
+
+    def test_a_damaged_disc_is_named_as_the_cause(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            unreadable_title_ids=(0,),
+            rip_output=makemkv_fixtures.DAMAGED_DISC_OUTPUT,
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertIn("damaged patch", outcome.message)
+
+    def test_a_failure_nobody_recognises_still_points_at_the_messages(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY, unreadable_title_ids=(0,))
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertIn("messages are above", outcome.message)
+
     def test_a_failed_rip_leaves_nothing_behind_in_staging(self):
         worker = self._worker(makemkv_fixtures.FILM_BLURAY, unreadable_title_ids=(0,))
 

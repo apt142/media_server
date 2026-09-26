@@ -9,7 +9,7 @@ INPUT_FILE=""
 
 usage() {
   cat <<EOF
-Usage: ./fix-rip.sh [--reencode] "/path/to/Movie (Year).mp4"
+Usage: ./scripts/fix-rip.sh [--reencode] "/path/to/Movie (Year).mp4"
 
 Fixes a title that plays a few seconds, stalls, then speed-plays with no
 audio. That is almost always a timestamp / variable-frame-rate problem in
@@ -161,7 +161,7 @@ if [[ ! -f "$INPUT_FILE" ]]; then
 fi
 
 if [[ "$is_reencoding" -eq 1 ]] && ! handbrake_command >/dev/null; then
-  print_error "HandBrakeCLI is not installed. Run ./setup.sh on the server Mac first."
+  print_error "HandBrakeCLI is not installed. Run ./scripts/setup.sh on the server Mac first."
   exit 1
 fi
 
@@ -188,5 +188,5 @@ trap - EXIT
 print_line ""
 print_line "Done. In Plex: Movies → Scan Library Files, then play this title on the Roku."
 if [[ "$is_reencoding" -eq 0 ]]; then
-  print_line "If it still stalls: ./fix-rip.sh --reencode \"${INPUT_FILE}\""
+  print_line "If it still stalls: ./scripts/fix-rip.sh --reencode \"${INPUT_FILE}\""
 fi

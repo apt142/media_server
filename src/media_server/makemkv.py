@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -376,6 +377,65 @@ def collapse_repeated_messages(messages: list[str]) -> list[str]:
         message if count == 1 else f"{message} (\u00d7{count})"
         for message, count in counts.items()
     ]
+
+
+@dataclass(frozen=True)
+class FailureSign:
+    """A phrase MakeMKV uses when a rip fails, and what it means in plain terms."""
+
+    markers: tuple[str, ...]
+    explanation: str
+
+    def is_in(self, spoken_messages: str) -> bool:
+        return any(marker in spoken_messages for marker in self.markers)
+
+
+# Matched in order, so the most specific reading of a failure wins. Every
+# marker here is taken from output a real disc produced: guessing at wording
+# MakeMKV might use would mean confidently naming the wrong cause, which is
+# worse than admitting the messages need reading.
+FAILURE_SIGNS = (
+    FailureSign(
+        markers=("ipc/send", "device not configured", "os x ipc error"),
+        explanation=(
+            "The drive stopped answering part way through, rather than reporting "
+            "a bad read. If other discs rip fine, it is this disc making the "
+            "drive give up; if they do not, check the cable and power to the "
+            "drive."
+        ),
+    ),
+    FailureSign(
+        markers=("l-ec uncorrectable", "medium error", "'read error'"),
+        explanation=(
+            "The disc has a damaged patch the drive could not read through. "
+            "Clean it from the centre outwards and try it again."
+        ),
+    ),
+    FailureSign(
+        markers=("evaluation period has expired", "application version is too old"),
+        explanation="MakeMKV's key has expired. Update it and run this again.",
+    ),
+)
+
+UNKNOWN_FAILURE = (
+    "Its messages are above; an expired key, missing Java on a Blu-ray, or an "
+    "unreadable disc are the usual causes."
+)
+
+
+def explain_failure(messages: Iterable[str]) -> str:
+    """Say in plain terms why nothing came off the disc.
+
+    MakeMKV's exit code says almost nothing and its closing line is always the
+    same "0 titles saved" whatever went wrong, so the reason is only ever in
+    the detail above it. Reading that detail here saves guessing at causes that
+    have already been ruled out by the messages themselves.
+    """
+    spoken_messages = "\n".join(messages).lower()
+    for failure_sign in FAILURE_SIGNS:
+        if failure_sign.is_in(spoken_messages):
+            return failure_sign.explanation
+    return UNKNOWN_FAILURE
 
 
 def duration_to_seconds(duration: str) -> int:

@@ -62,7 +62,7 @@ print_line "MakeMKV Java (only Blu-ray protections need it; JDK 25+ does not wor
 makemkv_java="$(configured_makemkv_java || true)"
 if [[ -z "$makemkv_java" ]]; then
   print_line "  configured            nothing set, so MakeMKV picks its own"
-  print_line "  fix                   brew install ${MAKE_MKV_JAVA_FORMULA}, then re-run ./setup.sh"
+  print_line "  fix                   brew install ${MAKE_MKV_JAVA_FORMULA}, then re-run ./scripts/setup.sh"
 elif [[ -x "$makemkv_java" ]]; then
   print_line "  configured            ${makemkv_java}"
   print_line "  version               $("$makemkv_java" -version 2>&1 | head -1)"
@@ -79,7 +79,7 @@ if [[ "$makemkv_tracks" == "$MAKE_MKV_KEEP_ALL_TRACKS" ]]; then
 else
   print_line "  rule                  ${makemkv_tracks:-MakeMKV default}"
   print_line "  note                  non-English tracks are being dropped during the rip."
-  print_line "                        Re-run ./setup.sh to keep them."
+  print_line "                        Re-run ./scripts/setup.sh to keep them."
 fi
 
 print_line ""
@@ -105,5 +105,5 @@ print_line "Disk"
 if [[ -d "$MEDIA_ROOT" ]]; then
   df -h "$MEDIA_ROOT" | awk 'NR==1 || NR==2 {print "  " $0}'
 else
-  print_line "  ${MEDIA_ROOT} does not exist yet. Run ./setup.sh on the server Mac."
+  print_line "  ${MEDIA_ROOT} does not exist yet. Run ./scripts/setup.sh on the server Mac."
 fi

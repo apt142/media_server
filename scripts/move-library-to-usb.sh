@@ -6,7 +6,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 usage() {
   cat <<EOF
-Usage: ./move-library-to-usb.sh /Volumes/DriveName
+Usage: ./scripts/move-library-to-usb.sh /Volumes/DriveName
 
 Copies ${MEDIA_ROOT} to DriveName/Media, then replaces ${MEDIA_ROOT} with a
 symlink. Plex libraries and the SMB share keep the same path.
@@ -75,7 +75,7 @@ if media_root_is_symlink; then
 fi
 
 if [[ ! -d "$MEDIA_ROOT" ]]; then
-  print_error "${MEDIA_ROOT} does not exist. Run ./setup.sh first."
+  print_error "${MEDIA_ROOT} does not exist. Run ./scripts/setup.sh first."
   exit 1
 fi
 
