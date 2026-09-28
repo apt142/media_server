@@ -129,6 +129,7 @@ class RipWorker:
             return RipOutcome(message="Nothing on this disc looks worth ripping.")
 
         self._announce_multiple_features(verdict, titles_to_rip)
+        self._announce_long_episodes(verdict, titles_to_rip)
 
         if not self._has_room_for(disc_scan.total_size_bytes(titles_to_rip)):
             return RipOutcome(message=self._no_room_message(titles_to_rip))
@@ -188,7 +189,7 @@ class RipWorker:
     ) -> list[DiscTitle]:
         """Every episode on a TV disc, or every film on a film disc."""
         if verdict.is_show:
-            return DiscClassifier(disc_scan).episode_length_titles()
+            return DiscClassifier(disc_scan).episodes_to_rip()
         return self._film_titles(disc_scan)
 
     def _film_titles(self, disc_scan: DiscScan) -> list[DiscTitle]:
@@ -224,6 +225,25 @@ class RipWorker:
             f"{self.settings.minimum_feature_minutes} minutes, so this looks like a "
             "double feature. Ripping all of them."
         )
+
+    def _announce_long_episodes(
+        self, verdict: DiscVerdict, titles_to_rip: list[DiscTitle]
+    ) -> None:
+        """Say when a title was kept that is longer than an episode should be.
+
+        This is the judgement most worth showing, because the alternative was
+        silently dropping it and shifting every episode number after it.
+        """
+        if not verdict.is_show:
+            return
+
+        for title in titles_to_rip:
+            if title.length_seconds > FEATURE_LENGTH_SECONDS:
+                self.announce(
+                    f"Title {title.title_id} runs {title.length_seconds // 60} "
+                    "minutes, longer than the rest. Taking it as a "
+                    "double-length episode rather than skipping it."
+                )
 
     def _no_room_message(self, titles_to_rip: list[DiscTitle]) -> str:
         """Point at the way out when it was the extra features that did not fit."""

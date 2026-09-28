@@ -62,6 +62,51 @@ class DiscVerdictTests(unittest.TestCase):
         self.assertEqual([title.title_id for title in episode_titles], [0, 1, 2, 3])
 
 
+class EpisodesToRipTests(unittest.TestCase):
+    """A double-length pilot is still an episode. A "play all" is not."""
+
+    def _episodes_on(self, scan_output: str) -> list:
+        return DiscClassifier(parse_disc_scan(scan_output)).episodes_to_rip()
+
+    def test_a_feature_length_pilot_is_taken_as_an_episode(self):
+        episodes = self._episodes_on(makemkv_fixtures.TV_DVD_WITH_LONG_PILOT)
+
+        self.assertEqual([title.title_id for title in episodes], [0, 1, 2])
+
+    def test_the_pilot_comes_first_so_the_numbering_starts_at_it(self):
+        episodes = self._episodes_on(makemkv_fixtures.TV_DVD_WITH_LONG_PILOT)
+
+        self.assertEqual(episodes[0].duration, "1:26:26")
+
+    def test_a_disc_whose_label_carries_no_season_is_still_read_as_a_show(self):
+        """FIREFLY_D1 has only a disc number to go on, which scores weakly."""
+        verdict = DiscClassifier(
+            parse_disc_scan(makemkv_fixtures.TV_DVD_WITH_LONG_PILOT)
+        ).verdict()
+
+        self.assertEqual(verdict.media_kind, "show")
+        self.assertTrue(verdict.is_confident)
+
+    def test_a_play_all_title_is_left_behind(self):
+        episodes = self._episodes_on(makemkv_fixtures.TV_DVD_WITH_PLAY_ALL)
+
+        self.assertEqual([title.title_id for title in episodes], [1, 2, 3, 4])
+
+    def test_an_ordinary_disc_is_unaffected(self):
+        episodes = self._episodes_on(makemkv_fixtures.TV_DVD)
+
+        self.assertEqual([title.title_id for title in episodes], [0, 1, 2, 3])
+
+    def test_the_shape_of_the_disc_is_still_read_from_ordinary_episodes(self):
+        """Loosening what gets ripped must not loosen the film-or-show call."""
+        classifier = DiscClassifier(
+            parse_disc_scan(makemkv_fixtures.DOUBLE_FEATURE_DVD)
+        )
+
+        self.assertEqual(classifier.verdict().media_kind, "film")
+        self.assertEqual(classifier.episode_length_titles(), [])
+
+
 class DiscLabelReadingTests(unittest.TestCase):
     def test_pulls_a_season_number_out_of_a_label(self):
         cases = [

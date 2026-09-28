@@ -160,6 +160,39 @@ class RippingATvDiscTests(RipWorkerTestCase):
 
         self.assertIsNone(self.catalog.job_with_id(outcome.job_id).part_number)
 
+    def test_a_feature_length_pilot_is_ripped_with_the_episodes(self):
+        """Firefly opens on an 88 minute episode. Skipping it would shift every
+        episode after it up a number and deliver the disc mislabelled."""
+        outcome = self._worker(
+            makemkv_fixtures.TV_DVD_WITH_LONG_PILOT
+        ).rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [0, 1, 2])
+
+    def test_the_pilot_is_counted_so_the_next_disc_numbers_from_after_it(self):
+        outcome = self._worker(
+            makemkv_fixtures.TV_DVD_WITH_LONG_PILOT
+        ).rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.episode_count, 3)
+        self.assertEqual(job.first_episode_number, 1)
+
+    def test_taking_a_long_title_as_an_episode_is_said_out_loud(self):
+        self._worker(makemkv_fixtures.TV_DVD_WITH_LONG_PILOT).rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("double-length episode", announced_output)
+
+    def test_a_play_all_title_is_not_ripped_on_top_of_the_episodes(self):
+        outcome = self._worker(
+            makemkv_fixtures.TV_DVD_WITH_PLAY_ALL
+        ).rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [1, 2, 3, 4])
+
     def test_one_bad_episode_does_not_cost_the_rest_of_the_disc(self):
         worker = self._worker(makemkv_fixtures.TV_DVD, unreadable_title_ids=(1,))
 

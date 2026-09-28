@@ -206,6 +206,37 @@ apart: play a few seconds of each and rename.
 On a **TV** disc, every title of episode length. Anything shorter is a menu
 loop or a trailer and is left behind.
 
+A **double-length pilot or finale** counts too. Firefly's first disc opens with
+an 88 minute episode sitting next to 44 minute ones, and dropping it does more
+damage than losing one file: every episode after it shifts up a number, so the
+disc is delivered mislabelled rather than merely incomplete.
+
+What that has to avoid is the **"play all"** title some discs carry, which runs
+the length of every episode put together and would deliver the whole disc
+twice. So the ceiling is a multiple of *this disc's own* episodes — two and a
+half times the longest ordinary one — rather than a fixed length:
+
+| Titles on the disc | Longest ordinary | Ceiling | Taken |
+|---|---|---|---|
+| 88, 44, 44 min | 44 | 110 | all three — the 88 is the pilot |
+| 176, 44, 44, 44, 44 | 44 | 110 | the four 44s — the 176 is a play-all |
+
+The case it cannot tell apart is a disc holding exactly two episodes plus a
+play-all, where the play-all is the same length as a double pilot. There the
+extra file is taken, on the grounds that deleting one is cheaper than noticing
+a missing episode six months later.
+
+The rip says so when it makes this call:
+
+```
+Title 0 runs 88 minutes, longer than the rest. Taking it as a double-length
+episode rather than skipping it.
+```
+
+Note that this ceiling is only about **what to rip**. The film-or-show question
+uses a flat 65 minute cut-off and always will, because raising it there would
+read a double feature — two 72 minute B-movies — as a pair of episodes.
+
 ### When a title will not decrypt
 
 It is reported and skipped, and the rest of the disc carries on. One bad

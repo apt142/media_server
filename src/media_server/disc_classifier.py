@@ -90,6 +90,18 @@ class DiscClassifier:
     # ordinary episodes that still count, so those discs are unaffected.
     LONGEST_EPISODE_SECONDS = 3900
 
+    # How much longer than an ordinary episode a title can run and still be
+    # one. Double-length pilots and finales are the reason: Firefly opens on
+    # an 88 minute episode next to 44 minute ones.
+    #
+    # A "play all" title is what this rules out, and it runs the length of
+    # every episode added together. Three or four episodes to a disc is the
+    # norm, so a play-all lands at three or four times an episode and this
+    # ceiling keeps it out. A disc holding only two episodes plus a play-all
+    # is the case it cannot tell apart, and there the extra file is taken and
+    # is easily deleted.
+    LONGEST_EPISODE_MULTIPLE = 2.5
+
     SIMILAR_LENGTH_TOLERANCE = 0.12
 
     def __init__(self, disc_scan: DiscScan):
@@ -118,8 +130,39 @@ class DiscClassifier:
         )
 
     def episode_length_titles(self) -> list[DiscTitle]:
+        """Titles that fill an ordinary episode slot.
+
+        This answers the film-or-show question, where the ceiling has to stay
+        low: two 72 minute B-movies on one disc must not read as a pair of
+        episodes. What to rip is a different question, answered below.
+        """
         return self.disc_scan.titles_lasting_between(
             self.SHORTEST_EPISODE_SECONDS, self.LONGEST_EPISODE_SECONDS
+        )
+
+    def episodes_to_rip(self) -> list[DiscTitle]:
+        """Every episode on the disc, including one that runs to a double slot.
+
+        A feature-length pilot is still the first episode of the season, and
+        skipping it is worse than it sounds: the episodes after it shift up a
+        number, so the whole disc is delivered mislabelled rather than merely
+        incomplete.
+
+        The ceiling is a multiple of the disc's own ordinary episodes rather
+        than a fixed length, because the thing being ruled out is the "play
+        all" title, which runs as long as every episode put together. What
+        counts as too long therefore depends on how many episodes are here.
+        """
+        ordinary_episodes = self.episode_length_titles()
+        if not ordinary_episodes:
+            return ordinary_episodes
+
+        longest_ordinary = max(
+            title.length_seconds for title in ordinary_episodes
+        )
+        return self.disc_scan.titles_lasting_between(
+            self.SHORTEST_EPISODE_SECONDS,
+            int(longest_ordinary * self.LONGEST_EPISODE_MULTIPLE),
         )
 
     def _show_evidence(self) -> tuple[int, str]:

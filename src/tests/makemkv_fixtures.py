@@ -60,6 +60,63 @@ TINFO:4,16,0,"VTS_05"
 TINFO:4,27,0,"title_t04.mkv"
 """
 
+# Firefly's first disc, recorded off the real thing. A feature-length pilot
+# sitting next to two ordinary episodes: the pilot runs twice the slot, which
+# is exactly the length that makes it look like a film rather than the first
+# episode it is.
+#
+# Note the label. It carries a disc number but no season, which is the weaker
+# of the two signals the classifier has, so this disc is also what keeps the
+# show verdict honest when the label barely helps.
+TV_DVD_WITH_LONG_PILOT = """\
+CINFO:1,6206,"DVD disc"
+CINFO:2,0,"FIREFLY_D1"
+CINFO:32,0,"FIREFLY_D1"
+TINFO:0,9,0,"1:26:26"
+TINFO:0,11,0,"3221225472"
+TINFO:0,27,0,"D1_t00.mkv"
+TINFO:1,9,0,"0:42:34"
+TINFO:1,11,0,"1932735283"
+TINFO:1,27,0,"D1_t01.mkv"
+TINFO:2,9,0,"0:43:47"
+TINFO:2,11,0,"1975684956"
+TINFO:2,27,0,"D1_t02.mkv"
+TINFO:3,9,0,"0:00:07"
+TINFO:3,11,0,"5242880"
+TINFO:3,27,0,"D1_t03.mkv"
+TINFO:4,9,0,"0:00:11"
+TINFO:4,11,0,"8388608"
+TINFO:4,27,0,"D1_t04.mkv"
+"""
+
+# The same disc shape with a "play all" title, which runs the length of every
+# episode put together. Taking that as well would deliver the whole disc twice.
+TV_DVD_WITH_PLAY_ALL = """\
+CINFO:1,6206,"DVD disc"
+CINFO:2,0,"FIREFLY_S01_D2"
+CINFO:32,0,"FIREFLY_S01_D2"
+TINFO:0,9,0,"2:56:04"
+TINFO:0,11,0,"6442450944"
+TINFO:0,16,0,"VTS_01"
+TINFO:0,27,0,"title_t00.mkv"
+TINFO:1,9,0,"0:44:01"
+TINFO:1,11,0,"1610612736"
+TINFO:1,16,0,"VTS_02"
+TINFO:1,27,0,"title_t01.mkv"
+TINFO:2,9,0,"0:43:58"
+TINFO:2,11,0,"1605632000"
+TINFO:2,16,0,"VTS_03"
+TINFO:2,27,0,"title_t02.mkv"
+TINFO:3,9,0,"0:44:10"
+TINFO:3,11,0,"1620000000"
+TINFO:3,16,0,"VTS_04"
+TINFO:3,27,0,"title_t03.mkv"
+TINFO:4,9,0,"0:43:45"
+TINFO:4,11,0,"1600000000"
+TINFO:4,16,0,"VTS_05"
+TINFO:4,27,0,"title_t04.mkv"
+"""
+
 # Two B-movies on one disc. Both run past episode length, so neither should be
 # mistaken for an episode of something.
 DOUBLE_FEATURE_DVD = """\
