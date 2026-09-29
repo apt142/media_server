@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from statistics import median
 
 from .configuration import Configuration
 from .disc_classifier import (
@@ -18,6 +19,7 @@ from .disc_classifier import (
     clean_disc_label,
     disc_number_from_label,
     season_from_disc_label,
+    verdict_asked_for,
 )
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
@@ -36,6 +38,11 @@ SPACE_HEADROOM_MULTIPLIER = 1.3
 # definitions from drifting apart.
 FEATURE_LENGTH_SECONDS = DiscClassifier.LONGEST_EPISODE_SECONDS
 
+# How far past its neighbours an episode has to run before it is worth
+# remarking on. A double-length pilot clears this easily; the ordinary spread
+# between a 42 and a 44 minute episode does not.
+NOTABLY_LONGER_MULTIPLE = 1.5
+
 
 @dataclass(frozen=True)
 class RipSettings:
@@ -49,6 +56,15 @@ class RipSettings:
     # putting the same one back in by mistake, and doing nothing is the right
     # answer to that far more often than ripping it twice is.
     is_rerip_allowed: bool = False
+
+    # Override the film-or-show reading of the disc. Empty means let the disc
+    # speak for itself, which is right nearly always; this is for the box set
+    # whose label says nothing and whose episodes run to film length.
+    forced_media_kind: str = ""
+
+    @property
+    def is_media_kind_forced(self) -> bool:
+        return bool(self.forced_media_kind)
 
     @property
     def minimum_feature_minutes(self) -> int:
@@ -119,10 +135,8 @@ class RipWorker:
             if blocked is not None:
                 return blocked
 
-        verdict = DiscClassifier(disc_scan).verdict()
-        self.announce(verdict.describe())
-        if not verdict.is_confident:
-            self.announce("That is a guess rather than a certainty.")
+        verdict = self._verdict_for(disc_scan)
+        self._announce_verdict(verdict)
 
         titles_to_rip = self._titles_to_rip(disc_scan, verdict)
         if not titles_to_rip:
@@ -135,6 +149,21 @@ class RipWorker:
             return RipOutcome(message=self._no_room_message(titles_to_rip))
 
         return self._rip_and_record(disc_scan, verdict, titles_to_rip)
+
+    def _verdict_for(self, disc_scan: DiscScan) -> DiscVerdict:
+        """What the disc holds: what it looks like, unless told otherwise."""
+        if self.settings.is_media_kind_forced:
+            return verdict_asked_for(self.settings.forced_media_kind)
+        return DiscClassifier(disc_scan).verdict()
+
+    def _announce_verdict(self, verdict: DiscVerdict) -> None:
+        if self.settings.is_media_kind_forced:
+            self.announce(f"Treating this as {verdict.kind_name} because you said so.")
+            return
+
+        self.announce(verdict.describe())
+        if not verdict.is_confident:
+            self.announce("That is a guess rather than a certainty.")
 
     def _handle_disc_seen_before(self, earlier_job: Job) -> RipOutcome | None:
         """Decide what to do about a disc that has already been through.
@@ -229,19 +258,25 @@ class RipWorker:
     def _announce_long_episodes(
         self, verdict: DiscVerdict, titles_to_rip: list[DiscTitle]
     ) -> None:
-        """Say when a title was kept that is longer than an episode should be.
+        """Say when one episode is much longer than the others on the disc.
 
         This is the judgement most worth showing, because the alternative was
         silently dropping it and shifting every episode number after it.
+
+        What makes it worth saying is standing out from its neighbours, not
+        passing a fixed length. A miniseries where every episode runs past
+        feature length has no odd one out, and announcing all of them would
+        report a decision nobody made.
         """
-        if not verdict.is_show:
+        if not verdict.is_show or len(titles_to_rip) < 2:
             return
 
+        typical_seconds = median(title.length_seconds for title in titles_to_rip)
         for title in titles_to_rip:
-            if title.length_seconds > FEATURE_LENGTH_SECONDS:
+            if title.length_seconds > typical_seconds * NOTABLY_LONGER_MULTIPLE:
                 self.announce(
                     f"Title {title.title_id} runs {title.length_seconds // 60} "
-                    "minutes, longer than the rest. Taking it as a "
+                    "minutes, well past the others. Taking it as a "
                     "double-length episode rather than skipping it."
                 )
 

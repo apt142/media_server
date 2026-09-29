@@ -315,6 +315,70 @@ class RippingADiscAgainTests(RipWorkerTestCase):
         self.assertEqual(len(self.catalog.all_jobs()), 1)
 
 
+class ForcingTheKindOfDiscTests(RipWorkerTestCase):
+    """For the box set whose label says nothing and whose episodes run long."""
+
+    AS_SHOW = RipSettings(forced_media_kind="show")
+    AS_FILM = RipSettings(forced_media_kind="film")
+
+    def test_a_miniseries_is_read_as_a_film_when_nothing_is_forced(self):
+        """The disc itself gives no reason to think these are episodes."""
+        outcome = self._worker(makemkv_fixtures.MINISERIES_DVD).rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.media_kind, "film")
+
+    def test_forcing_a_show_records_it_as_a_show(self):
+        worker = self._worker(makemkv_fixtures.MINISERIES_DVD, settings=self.AS_SHOW)
+
+        outcome = worker.rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.media_kind, "show")
+
+    def test_forcing_a_show_finds_episodes_that_run_past_feature_length(self):
+        worker = self._worker(makemkv_fixtures.MINISERIES_DVD, settings=self.AS_SHOW)
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [1, 2, 3])
+
+    def test_forcing_a_show_still_leaves_the_play_all_title_behind(self):
+        """Being told it is a show is not permission to deliver it twice."""
+        worker = self._worker(makemkv_fixtures.MINISERIES_DVD, settings=self.AS_SHOW)
+
+        worker.rip_disc_in_drive()
+
+        self.assertNotIn(0, self.fake_command.ripped_title_ids)
+
+    def test_forcing_a_film_on_a_tv_disc_records_it_as_a_film(self):
+        worker = self._worker(makemkv_fixtures.TV_DVD, settings=self.AS_FILM)
+
+        outcome = worker.rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.media_kind, "film")
+
+    def test_episodes_that_are_all_long_are_not_each_called_the_odd_one_out(self):
+        """Every episode running past feature length is the disc, not a decision."""
+        worker = self._worker(makemkv_fixtures.MINISERIES_DVD, settings=self.AS_SHOW)
+
+        worker.rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertNotIn("double-length episode", announced_output)
+
+    def test_being_told_is_said_out_loud_rather_than_hedged(self):
+        worker = self._worker(makemkv_fixtures.MINISERIES_DVD, settings=self.AS_SHOW)
+
+        worker.rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("Treating this as a TV disc because you said so.", announced_output)
+        self.assertNotIn("That is a guess", announced_output)
+
+
 class UnreadableDiscTests(RipWorkerTestCase):
     def test_a_disc_with_no_titles_is_reported_not_ripped(self):
         outcome = self._worker(makemkv_fixtures.UNREADABLE_DISC).rip_disc_in_drive()

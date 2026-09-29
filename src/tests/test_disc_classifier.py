@@ -92,6 +92,18 @@ class EpisodesToRipTests(unittest.TestCase):
 
         self.assertEqual([title.title_id for title in episodes], [1, 2, 3, 4])
 
+    def test_episodes_longer_than_a_feature_are_still_found(self):
+        """Nothing on a miniseries disc sits in the ordinary episode window."""
+        episodes = self._episodes_on(makemkv_fixtures.MINISERIES_DVD)
+
+        self.assertEqual([title.title_id for title in episodes], [1, 2, 3])
+
+    def test_the_typical_episode_is_the_median_not_the_longest(self):
+        """A maximum would be raised by the play-all it is meant to exclude."""
+        episodes = self._episodes_on(makemkv_fixtures.MINISERIES_DVD)
+
+        self.assertNotIn("3:30:00", [title.duration for title in episodes])
+
     def test_an_ordinary_disc_is_unaffected(self):
         episodes = self._episodes_on(makemkv_fixtures.TV_DVD)
 

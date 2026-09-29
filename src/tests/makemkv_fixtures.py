@@ -117,6 +117,27 @@ TINFO:4,16,0,"VTS_05"
 TINFO:4,27,0,"title_t04.mkv"
 """
 
+# A miniseries: three episodes that each run past feature length, plus a "play
+# all". Nothing about the shape says show -- the label is silent and every
+# episode reads as a film -- so this is the disc that needs to be told.
+MINISERIES_DVD = """\
+CINFO:1,6206,"DVD disc"
+CINFO:2,0,"BAND_OF_BROTHERS_D1"
+CINFO:32,0,"BAND_OF_BROTHERS_D1"
+TINFO:0,9,0,"3:30:00"
+TINFO:0,11,0,"7516192768"
+TINFO:0,27,0,"title_t00.mkv"
+TINFO:1,9,0,"1:10:00"
+TINFO:1,11,0,"2505397862"
+TINFO:1,27,0,"title_t01.mkv"
+TINFO:2,9,0,"1:12:00"
+TINFO:2,11,0,"2576980378"
+TINFO:2,27,0,"title_t02.mkv"
+TINFO:3,9,0,"1:08:00"
+TINFO:3,11,0,"2433814528"
+TINFO:3,27,0,"title_t03.mkv"
+"""
+
 # Two B-movies on one disc. Both run past episode length, so neither should be
 # mistaken for an episode of something.
 DOUBLE_FEATURE_DVD = """\

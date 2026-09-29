@@ -15,7 +15,13 @@ from .disc_classifier import DiscClassifier
 from .disc_watcher import DiscWatcher, WatchSettings
 from .encode_service import EncodeService
 from .encode_worker import EncodeWorker, is_handbrake_installed
-from .job_catalog import Job, JobCatalog, JobState
+from .job_catalog import (
+    FILM_MEDIA_KIND,
+    SHOW_MEDIA_KIND,
+    Job,
+    JobCatalog,
+    JobState,
+)
 from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
 from .makemkv import MakeMkv
@@ -382,6 +388,15 @@ def print_title_table(disc_scan) -> None:
         )
 
 
+def media_kind_asked_for(arguments: argparse.Namespace) -> str:
+    """Which reading of the disc was demanded, or empty to let the disc say."""
+    if arguments.is_forced_show:
+        return SHOW_MEDIA_KIND
+    if arguments.is_forced_film:
+        return FILM_MEDIA_KIND
+    return ""
+
+
 def jobs_worth_listing(state: JobState, jobs_in_state: list[Job]) -> list[Job]:
     """Everything still moving, but only the recent end of what is finished.
 
@@ -438,6 +453,19 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="is_rerip_allowed",
         help="Rip a disc that has already been through, replacing the first attempt",
+    )
+    disc_kind = rip_command.add_mutually_exclusive_group()
+    disc_kind.add_argument(
+        "--as-show",
+        action="store_true",
+        dest="is_forced_show",
+        help="Rip the disc as episodes, whatever its titles look like",
+    )
+    disc_kind.add_argument(
+        "--as-film",
+        action="store_true",
+        dest="is_forced_film",
+        help="Rip the disc as a film, whatever its titles look like",
     )
     rip_command.add_argument(
         "--min-minutes",
@@ -521,6 +549,7 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
                 minimum_feature_seconds=arguments.minimum_feature_minutes * 60,
                 is_main_feature_only=arguments.is_main_feature_only,
                 is_rerip_allowed=arguments.is_rerip_allowed,
+                forced_media_kind=media_kind_asked_for(arguments),
             )
         )
     if arguments.command == "scan":

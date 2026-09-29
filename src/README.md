@@ -123,7 +123,7 @@ ever grows, and status is for seeing what is moving right now.
 | Command | What it does |
 |---|---|
 | `watch` | Rips every disc put in the drive, until stopped |
-| `rip` | Rips the disc in the drive, records the job, ejects the disc. `--again` redoes a disc already ripped |
+| `rip` | Rips the disc in the drive, records the job, ejects the disc. `--again` redoes a disc already ripped, `--as-show`/`--as-film` overrule what it looks like |
 | `scan` | Says what the disc is and lists its titles, without ripping |
 | `encode` | Transcodes the ripped backlog and delivers it. `--one` does a single job, `--forever` keeps going |
 | `status` | Both folders, free space on each, backlog size, queue depth |
@@ -236,6 +236,41 @@ episode rather than skipping it.
 Note that this ceiling is only about **what to rip**. The film-or-show question
 uses a flat 65 minute cut-off and always will, because raising it there would
 read a double feature — two 72 minute B-movies — as a pair of episodes.
+
+### Overruling the film-or-show call
+
+Some discs give it nothing to work with. A miniseries whose episodes each run
+past feature length, on a disc whose label says nothing about a season, looks
+exactly like a disc of films — because by every signal available, it is one.
+
+```sh
+./media-server rip --as-show   # these are episodes, whatever they look like
+./media-server rip --as-film   # this is a film, whatever it looks like
+```
+
+They compose with the other flags, so `rip --again --as-show` redoes a disc
+that came out wrong the first time.
+
+Being told changes the selection rule as well as the label, which is the part
+that matters. The same disc, both ways:
+
+```
+$ ./media-server rip
+This looks like a film: the longest title runs 210 minutes, and nothing else
+on the disc is episode length.
+4 titles run past 65 minutes, so this looks like a double feature.
+  Movies/Band Of Brothers - feature1/Band Of Brothers - feature1.mp4
+  ... four of them, including the 3.5 hour "play all"
+
+$ ./media-server rip --as-show
+Treating this as a TV disc because you said so.
+  TV/Band Of Brothers/Season 01/Band Of Brothers - s01e01.mp4
+  TV/Band Of Brothers/Season 01/Band Of Brothers - s01e02.mp4
+  TV/Band Of Brothers/Season 01/Band Of Brothers - s01e03.mp4
+```
+
+The play-all is still left behind. Being told a disc holds episodes is not
+permission to deliver it twice.
 
 ### When a title will not decrypt
 

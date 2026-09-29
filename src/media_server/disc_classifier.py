@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from statistics import median
 
 from .job_catalog import FILM_MEDIA_KIND, SHOW_MEDIA_KIND
 from .makemkv import DiscScan, DiscTitle
@@ -70,10 +71,27 @@ class DiscVerdict:
     def is_show(self) -> bool:
         return self.media_kind == SHOW_MEDIA_KIND
 
-    def describe(self) -> str:
+    @property
+    def kind_name(self) -> str:
+        """What this disc holds, named the way a person would say it."""
         if self.is_show:
-            return f"This looks like a TV disc: {self.reason}."
-        return f"This looks like a film: {self.reason}."
+            return "a TV disc"
+        return "a film"
+
+    def describe(self) -> str:
+        return f"This looks like {self.kind_name}: {self.reason}."
+
+
+def verdict_asked_for(media_kind: str) -> DiscVerdict:
+    """The answer a person gave, standing in for the one the disc suggests.
+
+    Confident by definition: the point of saying so is to stop the disc being
+    second-guessed, and a hedge printed after an instruction reads as though
+    the instruction may not have been followed.
+    """
+    return DiscVerdict(
+        media_kind=media_kind, is_confident=True, reason="you said so"
+    )
 
 
 class DiscClassifier:
@@ -148,22 +166,31 @@ class DiscClassifier:
         number, so the whole disc is delivered mislabelled rather than merely
         incomplete.
 
-        The ceiling is a multiple of the disc's own ordinary episodes rather
-        than a fixed length, because the thing being ruled out is the "play
-        all" title, which runs as long as every episode put together. What
-        counts as too long therefore depends on how many episodes are here.
-        """
-        ordinary_episodes = self.episode_length_titles()
-        if not ordinary_episodes:
-            return ordinary_episodes
+        The ceiling is a multiple of the disc's own typical episode rather than
+        a fixed length, because the thing being ruled out is the "play all"
+        title, which runs as long as every episode put together. What counts as
+        too long therefore depends on how many episodes are here.
 
-        longest_ordinary = max(
-            title.length_seconds for title in ordinary_episodes
-        )
-        return self.disc_scan.titles_lasting_between(
-            self.SHORTEST_EPISODE_SECONDS,
-            int(longest_ordinary * self.LONGEST_EPISODE_MULTIPLE),
-        )
+        Typical means the median. A mean or a maximum would be dragged upwards
+        by the very titles being tested for, so a disc holding both a long
+        pilot and a play-all would raise its own ceiling until the play-all
+        fitted under it.
+        """
+        candidate_titles = [
+            title
+            for title in self.disc_scan.titles
+            if title.length_seconds >= self.SHORTEST_EPISODE_SECONDS
+        ]
+        if not candidate_titles:
+            return []
+
+        typical_seconds = median(title.length_seconds for title in candidate_titles)
+        longest_allowed = typical_seconds * self.LONGEST_EPISODE_MULTIPLE
+        return [
+            title
+            for title in candidate_titles
+            if title.length_seconds <= longest_allowed
+        ]
 
     def _show_evidence(self) -> tuple[int, str]:
         episode_titles = self.episode_length_titles()

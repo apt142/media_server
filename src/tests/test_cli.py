@@ -401,6 +401,43 @@ class RipCommandTests(CommandLineTestCase):
 
         self.assertIn("Ejecting without doing it again", output)
 
+    def test_as_show_makes_the_disc_a_show(self):
+        self._write_configuration_file()
+
+        exit_code, output = self._run_with_disc(
+            "rip --as-show", makemkv_fixtures.MINISERIES_DVD
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Treating this as a TV disc because you said so.", output)
+
+    def test_as_film_makes_the_disc_a_film(self):
+        self._write_configuration_file()
+
+        _exit_code, output = self._run_with_disc(
+            "rip --as-film", makemkv_fixtures.TV_DVD
+        )
+
+        self.assertIn("Treating this as a film because you said so.", output)
+
+    def test_asking_for_both_kinds_at_once_is_refused(self):
+        self._write_configuration_file()
+
+        with self.assertRaises(SystemExit):
+            self._run_command("rip", "--as-show", "--as-film")
+
+    def test_ripping_again_as_a_show_does_both(self):
+        self._write_configuration_file()
+        self._run_with_disc("rip", makemkv_fixtures.MINISERIES_DVD)
+
+        exit_code, output = self._run_with_disc(
+            "rip --again --as-show", makemkv_fixtures.MINISERIES_DVD
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Replacing #1", output)
+        self.assertIn("Treating this as a TV disc because you said so.", output)
+
     def test_ripping_again_replaces_the_first_attempt(self):
         self._write_configuration_file()
         self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
