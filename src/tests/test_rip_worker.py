@@ -379,6 +379,92 @@ class ForcingTheKindOfDiscTests(RipWorkerTestCase):
         self.assertNotIn("That is a guess", announced_output)
 
 
+class NamingTheDiscTests(RipWorkerTestCase):
+    """Volume labels are abbreviated, misspelled, or just DVD_VIDEO."""
+
+    def test_a_given_title_is_used_instead_of_the_label(self):
+        worker = self._worker(
+            makemkv_fixtures.MINISERIES_DVD,
+            settings=RipSettings(
+                forced_media_kind="show", forced_title="Band of Brothers"
+            ),
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.title, "Band of Brothers")
+
+    def test_a_given_title_works_on_a_film_too(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            settings=RipSettings(forced_title="The Matrix"),
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(self.catalog.job_with_id(outcome.job_id).title, "The Matrix")
+
+    def test_a_given_season_is_used_instead_of_the_label(self):
+        worker = self._worker(
+            makemkv_fixtures.TV_DVD, settings=RipSettings(forced_season_number=4)
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(self.catalog.job_with_id(outcome.job_id).season_number, 4)
+
+    def test_a_given_season_beats_one_the_label_disagrees_with(self):
+        """The fixture label says S01, which is the sort of thing that is wrong."""
+        worker = self._worker(
+            makemkv_fixtures.TV_DVD, settings=RipSettings(forced_season_number=2)
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(self.catalog.job_with_id(outcome.job_id).season_number, 2)
+
+    def test_the_naming_is_said_out_loud(self):
+        worker = self._worker(
+            makemkv_fixtures.MINISERIES_DVD,
+            settings=RipSettings(
+                forced_media_kind="show",
+                forced_title="Band of Brothers",
+                forced_season_number=1,
+            ),
+        )
+
+        worker.rip_disc_in_drive()
+
+        self.assertIn(
+            'Filing it under "Band of Brothers", season 1.', self.announced_lines
+        )
+
+    def test_a_season_given_for_a_film_is_reported_rather_than_dropped(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY, settings=RipSettings(forced_season_number=2)
+        )
+
+        worker.rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("Ignoring --season", announced_output)
+
+    def test_the_next_disc_carries_on_numbering_despite_different_capitals(self):
+        """One disc named off its label, the next typed by hand."""
+        first = self._worker(makemkv_fixtures.TV_DVD).rip_disc_in_drive()
+        self.assertEqual(self.catalog.job_with_id(first.job_id).title, "Firefly")
+
+        second_worker = self._worker(
+            makemkv_fixtures.TV_DVD_WITH_LONG_PILOT,
+            settings=RipSettings(forced_title="FIREFLY", forced_season_number=1),
+        )
+        second = second_worker.rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(second.job_id)
+        self.assertEqual(job.first_episode_number, 5)
+
+
 class UnreadableDiscTests(RipWorkerTestCase):
     def test_a_disc_with_no_titles_is_reported_not_ripped(self):
         outcome = self._worker(makemkv_fixtures.UNREADABLE_DISC).rip_disc_in_drive()

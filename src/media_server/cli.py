@@ -468,6 +468,21 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Rip the disc as a film, whatever its titles look like",
     )
     rip_command.add_argument(
+        "--title",
+        default="",
+        dest="forced_title",
+        metavar="NAME",
+        help="File the disc under this name rather than one read off its label",
+    )
+    rip_command.add_argument(
+        "--season",
+        type=int,
+        default=None,
+        dest="forced_season_number",
+        metavar="N",
+        help="Which season this disc holds, for a label that does not say",
+    )
+    rip_command.add_argument(
         "--min-minutes",
         type=int,
         default=FEATURE_LENGTH_SECONDS // 60,
@@ -550,6 +565,8 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
                 is_main_feature_only=arguments.is_main_feature_only,
                 is_rerip_allowed=arguments.is_rerip_allowed,
                 forced_media_kind=media_kind_asked_for(arguments),
+                forced_title=arguments.forced_title.strip(),
+                forced_season_number=arguments.forced_season_number,
             )
         )
     if arguments.command == "scan":

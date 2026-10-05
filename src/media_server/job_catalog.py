@@ -276,12 +276,19 @@ class JobCatalog:
 
         Disc two of a season has no idea it is disc two, so the count comes
         from what has already been recorded rather than from the disc itself.
+
+        Matched without regard to case, because one disc of a season may be
+        named off its label as "Band Of Brothers" and the next typed in by
+        hand as "Band of Brothers". Treating those as two different shows
+        would restart the numbering at one and overwrite the first disc.
         """
         row = self._connection.execute(
             """
             SELECT MAX(first_episode_number + episode_count) AS next_episode
               FROM jobs
-             WHERE title = ? AND season_number IS ? AND state != ?
+             WHERE title = ? COLLATE NOCASE
+               AND season_number IS ?
+               AND state != ?
             """,
             (title, season_number, JobState.FAILED),
         ).fetchone()

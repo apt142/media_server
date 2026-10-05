@@ -123,7 +123,7 @@ ever grows, and status is for seeing what is moving right now.
 | Command | What it does |
 |---|---|
 | `watch` | Rips every disc put in the drive, until stopped |
-| `rip` | Rips the disc in the drive, records the job, ejects the disc. `--again` redoes a disc already ripped, `--as-show`/`--as-film` overrule what it looks like |
+| `rip` | Rips the disc in the drive, records the job, ejects the disc. `--again` redoes a disc already ripped, `--as-show`/`--as-film` overrule what it looks like, `--title`/`--season` name it |
 | `scan` | Says what the disc is and lists its titles, without ripping |
 | `encode` | Transcodes the ripped backlog and delivers it. `--one` does a single job, `--forever` keeps going |
 | `status` | Both folders, free space on each, backlog size, queue depth |
@@ -271,6 +271,31 @@ Treating this as a TV disc because you said so.
 
 The play-all is still left behind. Being told a disc holds episodes is not
 permission to deliver it twice.
+
+### Naming a disc whose label is no help
+
+Volume labels are abbreviated, misspelled, and sometimes just `DVD_VIDEO`.
+Nothing later in the pipeline can recover a name the disc never carried, so it
+can be given at rip time:
+
+```sh
+./media-server rip --as-show --title "Band of Brothers" --season 1
+./media-server rip --title "The Shape of Water"          # films too
+```
+
+`--season` matters more than it looks. A label with no season in it falls back
+to season one, so without it a disc of season two is filed as season one and
+overwrites it episode for episode. A season given for a disc being ripped as a
+film is reported rather than quietly dropped.
+
+Episode numbers continue across the discs of a season on their own: disc two
+starts where disc one stopped, counted from what is already in the catalog.
+That lookup ignores case, so a disc named off its label as `Band Of Brothers`
+and the next typed by hand as `Band of Brothers` still number continuously
+rather than restarting at one and overwriting.
+
+The **folder** name is whatever you typed, though, so it is still worth
+spelling a show the same way each time.
 
 ### When a title will not decrypt
 

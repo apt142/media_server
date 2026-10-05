@@ -426,6 +426,17 @@ class RipCommandTests(CommandLineTestCase):
         with self.assertRaises(SystemExit):
             self._run_command("rip", "--as-show", "--as-film")
 
+    def test_a_title_and_season_can_be_given_on_the_command_line(self):
+        self._write_configuration_file()
+
+        exit_code, output = self._run_with_disc(
+            'rip --as-show --title Band_of_Brothers --season 1',
+            makemkv_fixtures.MINISERIES_DVD,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn('Filing it under "Band_of_Brothers", season 1.', output)
+
     def test_ripping_again_as_a_show_does_both(self):
         self._write_configuration_file()
         self._run_with_disc("rip", makemkv_fixtures.MINISERIES_DVD)

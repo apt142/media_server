@@ -62,6 +62,16 @@ class RipSettings:
     # whose label says nothing and whose episodes run to film length.
     forced_media_kind: str = ""
 
+    # What to file the disc under, when the volume label is no help. Labels are
+    # abbreviated, misspelled and sometimes just DVD_VIDEO, and nothing later
+    # in the pipeline can recover a name the disc never carried.
+    forced_title: str = ""
+
+    # Which season this disc holds. Only a label that says so can be trusted
+    # to know, and plenty do not, so a disc of season two would otherwise be
+    # filed as season one and overwrite it episode for episode.
+    forced_season_number: int | None = None
+
     @property
     def is_media_kind_forced(self) -> bool:
         return bool(self.forced_media_kind)
@@ -137,6 +147,7 @@ class RipWorker:
 
         verdict = self._verdict_for(disc_scan)
         self._announce_verdict(verdict)
+        self._announce_naming(verdict)
 
         titles_to_rip = self._titles_to_rip(disc_scan, verdict)
         if not titles_to_rip:
@@ -164,6 +175,31 @@ class RipWorker:
         self.announce(verdict.describe())
         if not verdict.is_confident:
             self.announce("That is a guess rather than a certainty.")
+
+    def _announce_naming(self, verdict: DiscVerdict) -> None:
+        """Say what the disc is being filed as when that did not come off the label.
+
+        A season given for a disc being ripped as a film has nowhere to go, so
+        it is said out loud rather than dropped. Quietly ignoring an argument
+        someone typed is how a box set ends up in the Movies folder with nobody
+        able to say why.
+        """
+        if self.settings.forced_season_number is not None and not verdict.is_show:
+            self.announce(
+                "Ignoring --season, because this disc is being ripped as a film."
+            )
+
+        filed_as = self._describe_forced_naming(verdict)
+        if filed_as:
+            self.announce(f"Filing it under {filed_as}.")
+
+    def _describe_forced_naming(self, verdict: DiscVerdict) -> str:
+        described = []
+        if self.settings.forced_title:
+            described.append(f'"{self.settings.forced_title}"')
+        if verdict.is_show and self.settings.forced_season_number is not None:
+            described.append(f"season {self.settings.forced_season_number}")
+        return ", ".join(described)
 
     def _handle_disc_seen_before(self, earlier_job: Job) -> RipOutcome | None:
         """Decide what to do about a disc that has already been through.
@@ -381,7 +417,9 @@ class RipWorker:
         staged_path: Path,
         episode_count: int,
     ) -> RippedDisc:
-        title = clean_disc_label(disc_scan.disc_label, is_show=verdict.is_show)
+        title = self.settings.forced_title or clean_disc_label(
+            disc_scan.disc_label, is_show=verdict.is_show
+        )
         season_number = self._season_number_for(disc_scan, verdict)
 
         return RippedDisc(
@@ -404,6 +442,8 @@ class RipWorker:
     ) -> int | None:
         if not verdict.is_show:
             return None
+        if self.settings.forced_season_number is not None:
+            return self.settings.forced_season_number
         return season_from_disc_label(disc_scan.disc_label)
 
     def _part_number_for(
