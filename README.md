@@ -894,6 +894,34 @@ You want `Using Java runtime from /opt/homebrew/opt/openjdk@17/bin/java`. If it 
 
 Your system `java` can stay on whatever version you like; this setting only affects MakeMKV.
 
+**One disc kills the drive part way through the rip**
+
+The sign is `Device not configured` against `/dev/rdiskN`, with no SCSI read error anywhere in the log:
+
+```
+Error 'Posix error - Device not configured' occurred while reading '/dev/rdisk4' at offset '14490009600'
+```
+
+That is not a bad read. It means the device node stopped existing — the drive dropped off the bus mid-rip. When the same disc does it at the same offset every time while other discs rip fine, the disc is triggering it, and retrying cannot help: MakeMKV reads a title in one go, so every attempt starts at zero and walks into the same place.
+
+`scripts/rescue-disc.sh` copies the disc instead, keeping a map of what it already has so each run continues rather than restarts:
+
+```bash
+brew install ddrescue
+
+./scripts/rescue-disc.sh "Red Sparrow"             # forward pass, stops at the bad spot
+# unplug the drive, plug it back in
+./scripts/rescue-disc.sh --reverse "Red Sparrow"   # fills in everything after it
+```
+
+Two passes bracket the bad region from both sides. What is left unread stays as zeros in the image — a hole of a hundred megabytes is a few seconds of glitched video in a film that otherwise would not exist. Then rip from the image rather than the disc:
+
+```bash
+/Applications/MakeMKV.app/Contents/MacOS/makemkvcon mkv iso:~/Media/Rips/images/"Red Sparrow.iso" all ~/Media/Rips/raw
+```
+
+Use `--from 15G` to start a pass past a spot that hangs the drive. The script runs one pass and stops on purpose: a drive that needs unplugging before it answers again cannot be looped over.
+
 **One movie stalls after a few seconds, then speed-plays with no sound**
 
 That is the file, not Wi-Fi. DVD detelecine can leave a *variable* frame rate or messy timestamps. Roku plays a couple of GOPs, loses the clock, then skips forward with no audio.

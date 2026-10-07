@@ -37,9 +37,15 @@ class RipWorkerTestCase(unittest.TestCase):
         unreadable_title_ids: tuple[int, ...] = (),
         rip_output: str = "",
         settings: RipSettings | None = None,
+        is_copy_refused: bool = False,
+        copy_output: str = "",
     ) -> RipWorker:
         self.fake_command = FakeMakeMkvCommand(
-            scan_output, unreadable_title_ids, rip_output
+            scan_output,
+            unreadable_title_ids,
+            rip_output,
+            is_copy_refused=is_copy_refused,
+            copy_output=copy_output,
         )
         return RipWorker(
             configuration=self.configuration,
@@ -578,6 +584,81 @@ class NotEnoughRoomTests(RipWorkerTestCase):
         announced_output = "\n".join(self.announced_lines)
         self.assertIn("needs about 37 GB", announced_output)
         self.assertIn("free  0.0 GB in staging", announced_output)
+
+
+class TryingHarderTests(RipWorkerTestCase):
+    """--try-harder copies the whole disc and reads the titles out of the copy."""
+
+    TRYING_HARDER = RipSettings(is_trying_harder=True)
+
+    def test_the_disc_is_copied_before_anything_is_ripped(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY, settings=self.TRYING_HARDER)
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(len(self.fake_command.copied_destinations), 1)
+
+    def test_the_titles_come_out_of_the_copy_rather_than_the_drive(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY, settings=self.TRYING_HARDER)
+
+        worker.rip_disc_in_drive()
+
+        self.assertTrue(
+            all(source.startswith("file:") for source in self.fake_command.ripped_sources)
+        )
+
+    def test_the_disc_is_still_identified_from_the_drive(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY, settings=self.TRYING_HARDER)
+
+        outcome = worker.rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.title, "The Matrix")
+        self.assertEqual(self.fake_command.scanned_sources[0], "disc:0")
+
+    def test_the_copy_is_deleted_once_the_titles_are_out_of_it(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY, settings=self.TRYING_HARDER)
+
+        worker.rip_disc_in_drive()
+
+        copy_path = self.fake_command.copied_destinations[0]
+        self.assertFalse(copy_path.exists())
+
+    def test_the_copy_is_deleted_even_when_no_title_would_rip(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            unreadable_title_ids=(0,),
+            settings=self.TRYING_HARDER,
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertFalse(outcome.is_ripped)
+        self.assertFalse(self.fake_command.copied_destinations[0].exists())
+
+    def test_a_refused_copy_is_reported_rather_than_ripped_around(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            settings=self.TRYING_HARDER,
+            is_copy_refused=True,
+            copy_output=makemkv_fixtures.DRIVE_DROPOUT_OUTPUT,
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertFalse(outcome.is_ripped)
+        self.assertIn("Could not copy the disc", outcome.message)
+        self.assertIn("stopped answering", outcome.message)
+        self.assertEqual(self.fake_command.ripped_title_ids, [])
+
+    def test_an_ordinary_rip_never_copies_the_disc(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+
+        worker.rip_disc_in_drive()
+
+        self.assertEqual(self.fake_command.copied_destinations, [])
+        self.assertEqual(self.fake_command.ripped_sources, ["disc:0"])
 
 
 class FolderNamingTests(unittest.TestCase):

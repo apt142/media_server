@@ -454,6 +454,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
         dest="is_rerip_allowed",
         help="Rip a disc that has already been through, replacing the first attempt",
     )
+    rip_command.add_argument(
+        "--try-harder",
+        action="store_true",
+        dest="is_trying_harder",
+        help=(
+            "Copy the whole disc first and rip from the copy. Slower, and needs "
+            "room for the entire disc, so keep it for a disc that fails normally"
+        ),
+    )
     disc_kind = rip_command.add_mutually_exclusive_group()
     disc_kind.add_argument(
         "--as-show",
@@ -564,6 +573,7 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
                 minimum_feature_seconds=arguments.minimum_feature_minutes * 60,
                 is_main_feature_only=arguments.is_main_feature_only,
                 is_rerip_allowed=arguments.is_rerip_allowed,
+                is_trying_harder=arguments.is_trying_harder,
                 forced_media_kind=media_kind_asked_for(arguments),
                 forced_title=arguments.forced_title.strip(),
                 forced_season_number=arguments.forced_season_number,

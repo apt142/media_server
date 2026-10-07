@@ -237,6 +237,44 @@ Note that this ceiling is only about **what to rip**. The film-or-show question
 uses a flat 65 minute cut-off and always will, because raising it there would
 read a double feature — two 72 minute B-movies — as a pair of episodes.
 
+### When a disc stops the drive part way through
+
+The sign is `Device not configured` against `/dev/rdiskN`, with no read error
+anywhere in the output. That is not a bad read. The device node stopped
+existing, which means the drive dropped off the bus mid-rip.
+
+Reading a title is one long continuous read, so a disc that upsets the drive
+64 minutes in fails there every time — each attempt starts from the beginning
+and arrives back at the same place. Running it again cannot help.
+
+`--try-harder` copies the whole disc first and reads the titles out of the
+copy:
+
+```sh
+./media-server rip --try-harder
+```
+
+It is deliberately not the default. A copy needs room for the *entire* disc,
+about 45 GB for a Blu-ray, on top of the rip and the encode that follow, and
+almost every disc rips fine without it. The space is checked before anything
+starts, and the copy is deleted as soon as the titles are out of it — including
+when the rip fails, so a dead attempt cannot leave 45 GB behind.
+
+The disc is still identified and named from the drive, so the fingerprint,
+label and season all match what a normal rip would have recorded. Only the
+titles come from the copy.
+
+If the copy itself cannot be made, that is reported rather than worked around:
+
+```
+Could not copy the disc. The drive stopped answering part way through, rather
+than reporting a bad read.
+```
+
+At that point the drive has usually hung and wants unplugging. For a disc that
+will not survive even a copy, `scripts/rescue-disc.sh` images it in resumable
+passes instead — see the main README.
+
 ### Overruling the film-or-show call
 
 Some discs give it nothing to work with. A miniseries whose episodes each run

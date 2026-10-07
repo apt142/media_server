@@ -29,6 +29,11 @@ from .volume_space import space_at
 
 RAW_FOLDER_NAME = "raw"
 
+# Whole-disc copies, kept only for as long as the titles are being read out of
+# one. Separate from the raw rips so the encoder never finds a copy and tries
+# to treat it as work.
+COPY_FOLDER_NAME = "disc-copies"
+
 # The raw rip and the encode it feeds live side by side until the transcode
 # finishes, so the peak need is more than the titles themselves.
 SPACE_HEADROOM_MULTIPLIER = 1.3
@@ -71,6 +76,12 @@ class RipSettings:
     # to know, and plenty do not, so a disc of season two would otherwise be
     # filed as season one and overwrite it episode for episode.
     forced_season_number: int | None = None
+
+    # Copy the whole disc first and take the titles out of the copy, rather
+    # than reading them off the disc. For the rare disc that stops the drive
+    # part way through; it wants room for the entire disc, so it is asked for
+    # rather than assumed.
+    is_trying_harder: bool = False
 
     @property
     def is_media_kind_forced(self) -> bool:
@@ -149,17 +160,77 @@ class RipWorker:
         self._announce_verdict(verdict)
         self._announce_naming(verdict)
 
-        titles_to_rip = self._titles_to_rip(disc_scan, verdict)
+        if self.settings.is_trying_harder:
+            return self._rip_through_copy(disc_scan, verdict)
+        return self._select_and_rip(disc_scan, verdict, disc_scan, self.makemkv)
+
+    def _select_and_rip(
+        self,
+        disc_scan: DiscScan,
+        verdict: DiscVerdict,
+        title_scan: DiscScan,
+        reader: MakeMkv,
+    ) -> RipOutcome:
+        """Choose what is worth keeping out of ``title_scan`` and read it.
+
+        The disc is identified and named from ``disc_scan``, which always comes
+        off the drive, while the titles come from wherever ``reader`` is
+        pointed. Those are the same scan ordinarily and differ only when the
+        disc has been copied first, where the label still has to match the one
+        the catalogue already knows.
+        """
+        titles_to_rip = self._titles_to_rip(title_scan, verdict)
         if not titles_to_rip:
             return RipOutcome(message="Nothing on this disc looks worth ripping.")
 
         self._announce_multiple_features(verdict, titles_to_rip)
         self._announce_long_episodes(verdict, titles_to_rip)
 
-        if not self._has_room_for(disc_scan.total_size_bytes(titles_to_rip)):
+        if not self._has_room_for(title_scan.total_size_bytes(titles_to_rip)):
             return RipOutcome(message=self._no_room_message(titles_to_rip))
 
-        return self._rip_and_record(disc_scan, verdict, titles_to_rip)
+        return self._rip_and_record(disc_scan, verdict, titles_to_rip, reader)
+
+    def _rip_through_copy(
+        self, disc_scan: DiscScan, verdict: DiscVerdict
+    ) -> RipOutcome:
+        """Copy the whole disc, then take the titles out of the copy.
+
+        The copy goes once the titles are out of it. Keeping it would double
+        what every rip costs in staging, and the only thing it is good for is
+        the rip that just happened.
+        """
+        if not self._has_room_for_copy(disc_scan):
+            return RipOutcome(
+                message="Not enough room in staging to copy the whole disc."
+            )
+
+        copy_path = self._copy_path_for(disc_scan)
+        self.announce(
+            "Copying the whole disc before ripping it. This takes longer than "
+            "a normal rip and needs room for the entire disc."
+        )
+        backup = self.makemkv.back_up_disc(copy_path)
+        for message in backup.messages:
+            self.announce(f"  {message}")
+
+        if not backup.is_backed_up:
+            shutil.rmtree(copy_path, ignore_errors=True)
+            return RipOutcome(
+                message=(
+                    "Could not copy the disc. "
+                    f"{explain_failure(backup.messages)}"
+                )
+            )
+
+        try:
+            reader = self.makemkv.reading_from(copy_path)
+            self.announce("Copied. Reading the titles out of the copy.")
+            return self._select_and_rip(
+                disc_scan, verdict, reader.scan_disc(), reader
+            )
+        finally:
+            shutil.rmtree(copy_path, ignore_errors=True)
 
     def _verdict_for(self, disc_scan: DiscScan) -> DiscVerdict:
         """What the disc holds: what it looks like, unless told otherwise."""
@@ -325,15 +396,18 @@ class RipWorker:
             "Let the queue drain, or use --main-feature-only to take just one."
         )
 
-    def _has_room_for(self, needed_bytes: int) -> bool:
+    def _has_room_for(
+        self,
+        needed_bytes: int,
+        purpose: str = "for the raw rip and the encode that follows",
+    ) -> bool:
         staging_space = space_at(self.configuration.staging_root)
         needed_with_headroom = int(needed_bytes * SPACE_HEADROOM_MULTIPLIER)
         if staging_space.has_room_for(needed_with_headroom):
             return True
 
         self.announce(
-            f"  needs about {needed_with_headroom / 1024**3:.0f} GB, "
-            f"for the raw rip and the encode that follows"
+            f"  needs about {needed_with_headroom / 1024**3:.0f} GB, {purpose}"
         )
         self.announce(f"  free  {staging_space.free_gigabytes:.1f} GB in staging")
         return False
@@ -343,9 +417,10 @@ class RipWorker:
         disc_scan: DiscScan,
         verdict: DiscVerdict,
         titles_to_rip: list[DiscTitle],
+        reader: MakeMkv,
     ) -> RipOutcome:
         staged_path = self._staged_path_for(disc_scan)
-        attempt = self._rip_titles(titles_to_rip, staged_path)
+        attempt = self._rip_titles(titles_to_rip, staged_path, reader)
 
         if not attempt.ripped_files:
             shutil.rmtree(staged_path, ignore_errors=True)
@@ -374,7 +449,7 @@ class RipWorker:
         )
 
     def _rip_titles(
-        self, titles_to_rip: list[DiscTitle], staged_path: Path
+        self, titles_to_rip: list[DiscTitle], staged_path: Path, reader: MakeMkv
     ) -> RipAttempt:
         """Decrypt each title, carrying on past any that refuse.
 
@@ -390,7 +465,7 @@ class RipWorker:
             self.announce(f"Reading {title.describe()}")
             title_path = staged_path / f"title-{title.title_id:02d}"
 
-            rip_result = self.makemkv.rip_title(title.title_id, title_path)
+            rip_result = reader.rip_title(title.title_id, title_path)
             if not rip_result.is_ripped:
                 self._announce_refusal(title, rip_result)
                 attempt.refusal_messages.extend(rip_result.messages)
@@ -453,6 +528,36 @@ class RipWorker:
         if verdict.is_show:
             return None
         return disc_number_from_label(disc_scan.disc_label)
+
+    def _copy_path_for(self, disc_scan: DiscScan) -> Path:
+        """Where the whole-disc copy goes while it is being read out of.
+
+        Beside the raw rips rather than inside them, because the encoder walks
+        the raw folder looking for work and a half-written disc copy is not it.
+        """
+        folder_name = safe_file_component(disc_scan.disc_label) or "unlabelled"
+        return (
+            self.configuration.staging_root
+            / COPY_FOLDER_NAME
+            / f"{folder_name}-{disc_scan.fingerprint()}"
+        )
+
+    def _has_room_for_copy(self, disc_scan: DiscScan) -> bool:
+        """Room for the whole disc and for the titles taken out of it at once.
+
+        The copy is deleted as soon as the titles are out, but both exist
+        together in the middle, and that is the moment that has to fit. The
+        disc's own size is estimated from its titles, which is the only measure
+        a scan offers.
+        """
+        copy_bytes = disc_scan.total_size_bytes(disc_scan.titles)
+        biggest_title_bytes = max(
+            (title.size_bytes for title in disc_scan.titles), default=0
+        )
+        return self._has_room_for(
+            copy_bytes + biggest_title_bytes,
+            purpose="for the disc copy, the rip taken from it, and the encode",
+        )
 
     def _staged_path_for(self, disc_scan: DiscScan) -> Path:
         """Where this disc's raw files go.

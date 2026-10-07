@@ -73,6 +73,14 @@ class RipResult:
 
 
 @dataclass(frozen=True)
+class BackupResult:
+    """Whether a whole-disc copy came off, and what MakeMKV said about it."""
+
+    is_backed_up: bool = False
+    messages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class DiscTitle:
     """One title on the disc: a film, an episode, a trailer, a menu loop."""
 
@@ -222,12 +230,31 @@ class MakeMkv:
     without a drive, a disc, or MakeMKV being installed.
     """
 
-    def __init__(self, run_command=run_makemkv, makemkv_command: Path = MAKEMKV_COMMAND):
+    def __init__(
+        self,
+        run_command=run_makemkv,
+        makemkv_command: Path = MAKEMKV_COMMAND,
+        source: str = DISC_ARGUMENT,
+    ):
         self.run_command = run_command
         self.makemkv_command = makemkv_command
+        self.source = source
 
     def is_installed(self) -> bool:
         return self.makemkv_command.exists()
+
+    def reading_from(self, backup_folder: Path) -> "MakeMkv":
+        """The same MakeMKV, reading a copy on disk rather than the drive.
+
+        A disc that stops the drive part way through can sometimes still be
+        copied whole. Once it has been, nothing further needs the drive, and
+        the titles come out of the copy exactly as they would have off the disc.
+        """
+        return MakeMkv(
+            run_command=self.run_command,
+            makemkv_command=self.makemkv_command,
+            source=f"file:{backup_folder}",
+        )
 
     def scan_disc(self) -> DiscScan:
         """Read the disc's label, type and titles.
@@ -235,8 +262,27 @@ class MakeMkv:
         Scanning a Blu-ray is slow, so callers are expected to hold on to the
         result rather than asking twice.
         """
-        result = self.run_command(["-r", MINIMUM_LENGTH_ARGUMENT, "info", DISC_ARGUMENT])
+        result = self.run_command(["-r", MINIMUM_LENGTH_ARGUMENT, "info", self.source])
         return parse_disc_scan(result.output)
+
+    def back_up_disc(self, destination: Path) -> BackupResult:
+        """Copy the whole disc into a folder, decrypted.
+
+        Always reads the drive, never a copy: this is the step that produces
+        the copy. It is slower than ripping a title and wants room for the
+        whole disc rather than the part worth keeping, which is why nothing
+        does it unless asked.
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        result = self.run_command(
+            ["-r", "--decrypt", "backup", DISC_ARGUMENT, str(destination)]
+        )
+        return BackupResult(
+            # MakeMKV has been known to report success having written nothing,
+            # so the folder is asked rather than the exit code believed.
+            is_backed_up=result.is_successful and any(destination.iterdir()),
+            messages=tuple(collapse_repeated_messages(parse_messages(result.output))),
+        )
 
     def rip_title(self, title_id: int, destination: Path) -> RipResult:
         """Decrypt one title into a folder, and say how it went.
@@ -253,7 +299,7 @@ class MakeMkv:
                 "-r",
                 "--decrypt",
                 "mkv",
-                DISC_ARGUMENT,
+                self.source,
                 str(title_id),
                 str(destination),
             ]
