@@ -62,6 +62,57 @@ class DiscVerdictTests(unittest.TestCase):
         self.assertEqual([title.title_id for title in episode_titles], [0, 1, 2, 3])
 
 
+class FilmWithSimilarExtrasTests(unittest.TestCase):
+    """A feature outweighs extras that happen to run to a similar length.
+
+    The Untouchables ripped as a season: its two featurettes are within a few
+    percent of each other, which read as a pair of episodes, and the film was
+    then too long to be one and was left on the disc.
+    """
+
+    def setUp(self):
+        self.classifier = DiscClassifier(
+            parse_disc_scan(makemkv_fixtures.FILM_WITH_SIMILAR_EXTRAS)
+        )
+
+    def test_the_disc_is_read_as_a_film(self):
+        verdict = self.classifier.verdict()
+
+        self.assertFalse(verdict.is_show)
+        self.assertIn("longest title runs 119 minutes", verdict.reason)
+
+    def test_the_extras_are_what_made_it_look_like_a_season(self):
+        episode_titles = self.classifier.episode_length_titles()
+
+        self.assertEqual([title.title_id for title in episode_titles], [1, 2])
+
+    def test_a_play_all_is_still_not_mistaken_for_a_feature(self):
+        """The towering title on a TV disc runs the length of all the episodes."""
+        cases = [
+            ("two episodes and a play-all", makemkv_fixtures.TV_DVD_WITH_PLAY_ALL),
+            ("a double-length pilot", makemkv_fixtures.TV_DVD_WITH_LONG_PILOT),
+        ]
+
+        for name, scan_output in cases:
+            with self.subTest(disc=name):
+                verdict = DiscClassifier(parse_disc_scan(scan_output)).verdict()
+
+                self.assertTrue(verdict.is_show)
+
+    def test_a_miniseries_of_feature_length_episodes_still_needs_telling(self):
+        """Not a regression: no signal on that disc says television.
+
+        Every episode runs past the episode ceiling, so there is nothing to
+        separate it from a disc of films. It is why --as-show exists, and it
+        is asserted here so this change cannot be mistaken for having fixed it.
+        """
+        verdict = DiscClassifier(
+            parse_disc_scan(makemkv_fixtures.MINISERIES_DVD)
+        ).verdict()
+
+        self.assertFalse(verdict.is_show)
+
+
 class EpisodesToRipTests(unittest.TestCase):
     """A double-length pilot is still an episode. A "play all" is not."""
 

@@ -122,6 +122,19 @@ class DiscClassifier:
 
     SIMILAR_LENGTH_TOLERANCE = 0.12
 
+    # How far past the longest episode-length title a feature has to run before
+    # its sheer presence answers the question. A film disc carries its extras
+    # next to the feature, and no extra comes close to it; two of them landing
+    # near each other's length is a coincidence, which on its own used to be
+    # enough to read a film disc as a season.
+    DOMINANT_FEATURE_MULTIPLE = 1.5
+
+    # A "play all" also towers over everything around it, so it has to be told
+    # apart from a feature. It runs the length of every episode put together,
+    # give or take the seconds of padding between them, and a feature sitting
+    # beside its extras never does.
+    PLAY_ALL_TOLERANCE = 0.15
+
     def __init__(self, disc_scan: DiscScan):
         self.disc_scan = disc_scan
 
@@ -240,11 +253,43 @@ class DiscClassifier:
         score = 1
         reasons = [f"the longest title runs {longest_seconds // 60} minutes"]
 
-        if len(self.episode_length_titles()) < 2:
+        episode_titles = self.episode_length_titles()
+        if len(episode_titles) < 2:
             score += 2
             reasons.append("nothing else on the disc is episode length")
+        elif self._towers_over_the_rest(longest_seconds, episode_titles):
+            score += 2
+            reasons.append("everything else on it is far shorter")
 
         return score, ", and ".join(reasons)
+
+    def _towers_over_the_rest(
+        self, longest_seconds: int, episode_titles: list[DiscTitle]
+    ) -> bool:
+        """One title long enough to dwarf the others, and not a "play all".
+
+        A feature with extras beside it looks exactly like this: a 119 minute
+        film next to a pair of 20 minute featurettes. Without this, those two
+        featurettes happening to run within a few percent of each other
+        outweighed the film itself, and the disc was filed as a season.
+
+        The one thing that looks the same is a "play all", which also towers
+        over its neighbours. It gives itself away by running the length of all
+        of them added together, which a feature never does.
+        """
+        tallest_episode = max(title.length_seconds for title in episode_titles)
+        if longest_seconds < tallest_episode * self.DOMINANT_FEATURE_MULTIPLE:
+            return False
+        return not self._is_play_all(longest_seconds, episode_titles)
+
+    def _is_play_all(
+        self, longest_seconds: int, episode_titles: list[DiscTitle]
+    ) -> bool:
+        episode_total = sum(title.length_seconds for title in episode_titles)
+        if not episode_total:
+            return False
+        difference = abs(longest_seconds - episode_total)
+        return difference / episode_total <= self.PLAY_ALL_TOLERANCE
 
 
 def spaced_label(disc_label: str) -> str:

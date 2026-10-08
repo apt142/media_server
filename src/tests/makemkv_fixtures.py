@@ -32,6 +32,33 @@ TINFO:3,16,0,"00803.mpls"
 TINFO:3,27,0,"title_t03.mkv"
 """
 
+# A film whose extras happen to run within a few percent of each other, which
+# is the shape that used to read as a season and rip the featurettes instead of
+# the film. Constructed rather than recorded: the lengths are The Untouchables'
+# and the records follow the format of the discs above.
+FILM_WITH_SIMILAR_EXTRAS = """\
+MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"
+CINFO:1,6206,"DVD disc"
+CINFO:2,0,"THE_UNTOUCHABLES"
+CINFO:32,0,"THE_UNTOUCHABLES"
+TINFO:0,9,0,"1:59:12"
+TINFO:0,11,0,"7516192768"
+TINFO:0,16,0,"VTS_01"
+TINFO:0,27,0,"title_t00.mkv"
+TINFO:1,9,0,"0:20:14"
+TINFO:1,11,0,"1073741824"
+TINFO:1,16,0,"VTS_02"
+TINFO:1,27,0,"title_t01.mkv"
+TINFO:2,9,0,"0:21:03"
+TINFO:2,11,0,"1181116006"
+TINFO:2,16,0,"VTS_03"
+TINFO:2,27,0,"title_t02.mkv"
+TINFO:3,9,0,"0:04:40"
+TINFO:3,11,0,"268435456"
+TINFO:3,16,0,"VTS_04"
+TINFO:3,27,0,"title_t03.mkv"
+"""
+
 # Four titles at almost exactly the same length, and a season in the label.
 TV_DVD = """\
 MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"

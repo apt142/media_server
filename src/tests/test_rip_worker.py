@@ -74,6 +74,17 @@ class RippingAFilmTests(RipWorkerTestCase):
         self.assertEqual(job.title, "The Matrix")
         self.assertEqual(job.disc_label, "THE_MATRIX")
 
+    def test_a_film_whose_extras_match_each_other_is_still_ripped_as_a_film(self):
+        """The Untouchables delivered two featurettes and left the film behind."""
+        outcome = self._worker(
+            makemkv_fixtures.FILM_WITH_SIMILAR_EXTRAS
+        ).rip_disc_in_drive()
+
+        job = self.catalog.job_with_id(outcome.job_id)
+        self.assertEqual(job.media_kind, "film")
+        self.assertEqual(job.title, "The Untouchables")
+        self.assertEqual(self.fake_command.ripped_title_ids, [0])
+
     def test_the_disc_is_ejected_as_soon_as_the_rip_is_done(self):
         self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
 
