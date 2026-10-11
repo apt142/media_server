@@ -495,6 +495,14 @@ class UnreadableDiscTests(RipWorkerTestCase):
 
         self.assertIn("  Failed to open disc", self.announced_lines)
 
+    def test_an_expired_key_is_named_rather_than_blamed_on_the_drive(self):
+        """The key expiring looks exactly like an empty drive from here."""
+        outcome = self._worker(makemkv_fixtures.EXPIRED_KEY_SCAN).rip_disc_in_drive()
+
+        self.assertFalse(outcome.is_ripped)
+        self.assertIn("key has expired", outcome.message)
+        self.assertNotIn("drive may be empty", outcome.message)
+
     def test_a_disc_where_every_title_fails_records_no_job(self):
         worker = self._worker(
             makemkv_fixtures.FILM_BLURAY, unreadable_title_ids=(0, 1, 2, 3)

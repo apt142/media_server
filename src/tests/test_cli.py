@@ -375,6 +375,18 @@ class RipCommandTests(CommandLineTestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("No titles found", output)
 
+    def test_scanning_with_an_expired_key_says_so(self):
+        """Scanning is where an expired key is usually met, and it found nothing."""
+        self._write_configuration_file()
+
+        exit_code, output = self._run_with_disc(
+            "scan", makemkv_fixtures.EXPIRED_KEY_SCAN
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("key has expired", output)
+        self.assertNotIn("drive may be empty", output)
+
     def test_scanning_describes_the_disc_without_ripping_it(self):
         self._write_configuration_file()
 

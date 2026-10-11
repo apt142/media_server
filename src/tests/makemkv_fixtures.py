@@ -237,6 +237,14 @@ MSG:5009,0,1,"Encountered 23 errors of type 'OS X IPC Error' - see http://www.ma
 MSG:5005,0,2,"Copy complete. 0 titles saved, 1 failed.","...","0","1"
 """
 
+# An expired key met at scan time rather than at decrypt time, recorded from a
+# real run. Nothing is listed and no title is attempted, so this is identical
+# to an empty drive apart from the one message saying what actually happened.
+EXPIRED_KEY_SCAN = """\
+MSG:1005,0,1,"MakeMKV v1.18.4 darwin(arm64-release) started","%1 started","MakeMKV v1.18.4"
+MSG:5021,0,0,"This application version is too old.  Please download the latest version at http://www.makemkv.com/ or enter a registration key to continue using the current version.","...","..."
+"""
+
 # What an expired beta key looks like: the scan works, the decrypt does not.
 EXPIRED_KEY_OUTPUT = """\
 MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"

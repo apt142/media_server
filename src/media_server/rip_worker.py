@@ -24,7 +24,14 @@ from .disc_classifier import (
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
 from .job_catalog import Job, JobCatalog, JobState, RippedDisc
-from .makemkv import DiscScan, DiscTitle, MakeMkv, RipResult, explain_failure
+from .makemkv import (
+    DiscScan,
+    DiscTitle,
+    MakeMkv,
+    RipResult,
+    explain_empty_scan,
+    explain_failure,
+)
 from .volume_space import space_at
 
 RAW_FOLDER_NAME = "raw"
@@ -145,7 +152,7 @@ class RipWorker:
 
         if not disc_scan.has_titles:
             return RipOutcome(
-                message="No titles found. The drive may be empty, or the disc may not be readable."
+                message=explain_empty_scan(disc_scan.messages)
             )
 
         self.announce(f'Disc label: "{disc_scan.disc_label or "unlabelled"}"')

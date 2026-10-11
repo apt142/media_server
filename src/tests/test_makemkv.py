@@ -10,6 +10,7 @@ from media_server.makemkv import (
     MakeMkv,
     collapse_repeated_messages,
     duration_to_seconds,
+    explain_empty_scan,
     explain_failure,
     largest_mkv_in,
     parse_disc_scan,
@@ -267,6 +268,40 @@ class FailureExplanationTests(unittest.TestCase):
 
     def test_saying_nothing_at_all_still_gives_an_explanation(self):
         self.assertIn("messages are above", explain_failure([]))
+
+
+class EmptyScanExplanationTests(unittest.TestCase):
+    """No titles means an empty drive or a reason MakeMKV already gave."""
+
+    def _explain(self, makemkv_output: str) -> str:
+        return explain_empty_scan(parse_messages(makemkv_output))
+
+    def test_an_expired_key_is_not_reported_as_an_empty_drive(self):
+        explanation = self._explain(makemkv_fixtures.EXPIRED_KEY_SCAN)
+
+        self.assertIn("key has expired", explanation)
+        self.assertNotIn("drive may be empty", explanation)
+
+    def test_a_drive_with_nothing_in_it_still_says_so(self):
+        explanation = self._explain(makemkv_fixtures.NO_DRIVE_RESPONSE)
+
+        self.assertIn("drive may be empty", explanation)
+
+    def test_a_disc_that_would_not_open_is_not_blamed_on_the_key(self):
+        explanation = self._explain(makemkv_fixtures.UNREADABLE_DISC)
+
+        self.assertIn("drive may be empty", explanation)
+
+    def test_every_explanation_opens_by_saying_nothing_was_found(self):
+        cases = [
+            ("expired key", makemkv_fixtures.EXPIRED_KEY_SCAN),
+            ("empty drive", makemkv_fixtures.NO_DRIVE_RESPONSE),
+            ("unreadable disc", makemkv_fixtures.UNREADABLE_DISC),
+        ]
+
+        for name, scan_output in cases:
+            with self.subTest(disc=name):
+                self.assertTrue(self._explain(scan_output).startswith("No titles found."))
 
 
 class OutputDecodingTests(unittest.TestCase):

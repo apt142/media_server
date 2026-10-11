@@ -24,7 +24,7 @@ from .job_catalog import (
 )
 from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
-from .makemkv import MakeMkv
+from .makemkv import MakeMkv, explain_empty_scan
 from .rip_worker import FEATURE_LENGTH_SECONDS, RipSettings, RipWorker
 from .volume_space import LOW_SPACE_GIGABYTES, VOLUME_MISSING, VolumeSpace, space_at
 
@@ -242,7 +242,7 @@ class PipelineCommands:
             print(f"  {message}")
 
         if not disc_scan.has_titles:
-            print("No titles found. The drive may be empty, or the disc unreadable.")
+            print(explain_empty_scan(disc_scan.messages))
             return 1
 
         print(f'Label      : {disc_scan.disc_label or "unlabelled"}')

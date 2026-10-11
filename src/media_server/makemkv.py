@@ -463,10 +463,25 @@ FAILURE_SIGNS = (
     ),
 )
 
+# Said only when MakeMKV offered no reason of its own, which is what an empty
+# drive looks like: no titles, and nothing to say about why.
+EMPTY_DRIVE_MESSAGE = (
+    "No titles found. The drive may be empty, or the disc may not be readable."
+)
+
 UNKNOWN_FAILURE = (
     "Its messages are above; an expired key, missing Java on a Blu-ray, or an "
     "unreadable disc are the usual causes."
 )
+
+
+def matching_failure_sign(messages: Iterable[str]) -> FailureSign | None:
+    """The first known failure MakeMKV's messages describe, if any do."""
+    spoken_messages = "\n".join(messages).lower()
+    for failure_sign in FAILURE_SIGNS:
+        if failure_sign.is_in(spoken_messages):
+            return failure_sign
+    return None
 
 
 def explain_failure(messages: Iterable[str]) -> str:
@@ -477,11 +492,24 @@ def explain_failure(messages: Iterable[str]) -> str:
     the detail above it. Reading that detail here saves guessing at causes that
     have already been ruled out by the messages themselves.
     """
-    spoken_messages = "\n".join(messages).lower()
-    for failure_sign in FAILURE_SIGNS:
-        if failure_sign.is_in(spoken_messages):
-            return failure_sign.explanation
-    return UNKNOWN_FAILURE
+    failure_sign = matching_failure_sign(messages)
+    if failure_sign is None:
+        return UNKNOWN_FAILURE
+    return failure_sign.explanation
+
+
+def explain_empty_scan(messages: Iterable[str]) -> str:
+    """Say why a scan found no titles at all.
+
+    An empty drive and an expired key look identical from here: no titles
+    either way. MakeMKV does say which it was, so blaming the drive over the
+    top of its explanation sends someone to check the one thing that is not
+    wrong. Only when it says nothing is the drive worth suspecting.
+    """
+    failure_sign = matching_failure_sign(messages)
+    if failure_sign is None:
+        return EMPTY_DRIVE_MESSAGE
+    return f"No titles found. {failure_sign.explanation}"
 
 
 def duration_to_seconds(duration: str) -> int:
