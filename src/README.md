@@ -237,6 +237,34 @@ Note that this ceiling is only about **what to rip**. The film-or-show question
 uses a flat 65 minute cut-off and always will, because raising it there would
 read a double feature — two 72 minute B-movies — as a pair of episodes.
 
+### A disc that offers the same film more than once
+
+Some DVDs are multi-angle, and MakeMKV lists every angle as its own title.
+From a scan they are indistinguishable — the same runtime to the second and
+the same size:
+
+```
+TITLE  LENGTH     SIZE      SOURCE         FLAG   NAME
+0      2:04:09    6.8 GB                   -      title_t00.mkv
+1      2:04:09    6.8 GB                   -      title_t01.mkv
+```
+
+Taking both put A New Hope in the library three times. Because the copies land
+in one folder as `- part1`, `- part2` and `- part3`, Plex stacks them and plays
+them back to back, so the film appears to restart after the credits.
+
+Feature-length titles sharing a runtime **to the exact second** are now treated
+as one film and the largest copy is taken:
+
+```
+2 titles run to exactly the same length and size, so the disc is offering the
+same film more than once. Taking it once.
+```
+
+The exact second is what keeps genuine double features intact. Two different
+films share a runtime only by coincidence, and never that precisely — the pair
+on one reissue disc run 1:12:04 and 1:12:40, and both are still taken.
+
 ### When a disc stops the drive part way through
 
 The sign is `Device not configured` against `/dev/rdiskN`, with no read error

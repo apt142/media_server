@@ -24,6 +24,7 @@ from .job_catalog import (
 )
 from .launch_agents import AgentInstaller
 from .library_delivery import LibraryDelivery
+from .film_lookup import FilmLookup
 from .makemkv import MakeMkv, explain_empty_scan
 from .rip_worker import FEATURE_LENGTH_SECONDS, RipSettings, RipWorker
 from .volume_space import LOW_SPACE_GIGABYTES, VOLUME_MISSING, VolumeSpace, space_at
@@ -222,7 +223,11 @@ class PipelineCommands:
             return 1
 
         worker = RipWorker(
-            self.configuration, self.catalog, makemkv, settings=settings
+            self.configuration,
+            self.catalog,
+            makemkv,
+            settings=settings,
+            film_lookup=FilmLookup(),
         )
         outcome = worker.rip_disc_in_drive()
         print(outcome.message)

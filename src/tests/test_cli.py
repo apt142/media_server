@@ -23,6 +23,7 @@ from media_server.encode_worker import EncodeWorker
 from media_server.makemkv import MakeMkv
 from tests import makemkv_fixtures
 from tests.fake_drive import RecordingDiscDrive
+from tests.fake_film_lookup import FakeFilmLookup
 from tests.fake_makemkv import FakeMakeMkvCommand
 from tests.test_encode_worker import FakeHandBrake
 
@@ -344,12 +345,20 @@ class RipCommandTests(CommandLineTestCase):
         )
 
     def _run_with_disc(self, command: str, scan_output: str) -> tuple[int, str]:
+        self.film_lookup = FakeFilmLookup(getattr(self, "years_by_title", None))
         with mock.patch(
             "media_server.cli.MakeMkv",
             return_value=self._installed_makemkv(scan_output),
         ):
-            with mock.patch("media_server.rip_worker.DiscDrive", RecordingDiscDrive):
-                return self._run_command(*command.split())
+            # Stubbed rather than left alone: a test suite must not depend on
+            # Wikidata being up, nor make a request every time it runs.
+            with mock.patch(
+                "media_server.cli.FilmLookup", return_value=self.film_lookup
+            ):
+                with mock.patch(
+                    "media_server.rip_worker.DiscDrive", RecordingDiscDrive
+                ):
+                    return self._run_command(*command.split())
 
     def test_ripping_a_film_queues_it_and_says_so(self):
         self._write_configuration_file()

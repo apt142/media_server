@@ -24,6 +24,7 @@ from .disc_classifier import (
 from .disc_drive import DiscDrive
 from .file_names import safe_file_component
 from .job_catalog import Job, JobCatalog, JobState, RippedDisc
+from .film_lookup import FilmLookup
 from .makemkv import (
     DiscScan,
     DiscTitle,
@@ -99,6 +100,26 @@ class RipSettings:
         return self.minimum_feature_seconds // 60
 
 
+def without_repeated_features(feature_titles: list[DiscTitle]) -> list[DiscTitle]:
+    """One title per distinct runtime, keeping the largest of any repeats.
+
+    A multi-angle DVD lists every angle as its own title, and from a scan they
+    are indistinguishable: the same runtime to the second and the same size.
+    Star Wars does exactly this, and taking both put the film on the shelf
+    twice at seven gigabytes a copy.
+
+    Matching on the exact second is what keeps a genuine double feature
+    intact. Two different films share a runtime only by coincidence, and not
+    to the second: the pair on one reissue disc run 1:12:04 and 1:12:40.
+    """
+    largest_by_length: dict[int, DiscTitle] = {}
+    for title in feature_titles:
+        repeated = largest_by_length.get(title.length_seconds)
+        if repeated is None or title.size_bytes > repeated.size_bytes:
+            largest_by_length[title.length_seconds] = title
+    return sorted(largest_by_length.values(), key=lambda title: title.title_id)
+
+
 @dataclass
 class RipAttempt:
     """What came off a disc, and what MakeMKV said about what did not."""
@@ -137,6 +158,7 @@ class RipWorker:
         drive: DiscDrive | None = None,
         announce=print,
         settings: RipSettings | None = None,
+        film_lookup: FilmLookup | None = None,
     ):
         self.configuration = configuration
         self.catalog = catalog
@@ -144,6 +166,9 @@ class RipWorker:
         self.drive = drive or DiscDrive()
         self.announce = announce
         self.settings = settings or RipSettings()
+        # Handed in so tests reach no web service, and so a caller that wants
+        # nothing to do with the network can pass None and get no year.
+        self.film_lookup = film_lookup or FilmLookup()
 
     def rip_disc_in_drive(self) -> RipOutcome:
         """Read the disc, rip it, record it, and eject it."""
@@ -351,12 +376,26 @@ class RipWorker:
                 self.settings.minimum_feature_seconds
             )
             if feature_titles:
-                return feature_titles
+                return self._single_copy_of_each(feature_titles)
 
         single_feature = disc_scan.feature_title()
         if single_feature is None:
             return []
         return [single_feature]
+
+    def _single_copy_of_each(
+        self, feature_titles: list[DiscTitle]
+    ) -> list[DiscTitle]:
+        """Drop the repeats a disc lists as separate titles, and say so."""
+        distinct_titles = without_repeated_features(feature_titles)
+        repeat_count = len(feature_titles) - len(distinct_titles)
+        if repeat_count:
+            self.announce(
+                f"{repeat_count + 1} titles run to exactly the same length and "
+                "size, so the disc is offering the same film more than once. "
+                "Taking it once."
+            )
+        return distinct_titles
 
     def _announce_multiple_features(
         self, verdict: DiscVerdict, titles_to_rip: list[DiscTitle]
@@ -509,6 +548,7 @@ class RipWorker:
             media_kind=verdict.media_kind,
             staged_path=staged_path,
             title=title,
+            year=self._release_year_for(title, verdict),
             part_number=self._part_number_for(disc_scan, verdict),
             disc_fingerprint=disc_scan.fingerprint(),
             disc_format=disc_scan.media_kind,
@@ -518,6 +558,27 @@ class RipWorker:
             ),
             episode_count=episode_count,
         )
+
+    def _release_year_for(self, title: str, verdict: DiscVerdict) -> str:
+        """The year the film came out, when it can be looked up, else nothing.
+
+        Only films. A show's folder is the series name with no year, so
+        looking one up would cost a web request to throw the answer away.
+
+        An empty year is a working answer, not a failure: the library already
+        files a film without one. So nothing here is worth a warning that
+        would read like something went wrong.
+        """
+        if verdict.is_show or not self.film_lookup:
+            return ""
+
+        match = self.film_lookup.best_match(title)
+        if match is None:
+            self.announce(f'Could not find a release year for "{title}".')
+            return ""
+
+        self.announce(f"Wikidata has this as {match.name} ({match.year}).")
+        return match.year
 
     def _season_number_for(
         self, disc_scan: DiscScan, verdict: DiscVerdict

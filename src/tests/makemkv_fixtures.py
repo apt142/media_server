@@ -59,6 +59,32 @@ TINFO:3,16,0,"VTS_04"
 TINFO:3,27,0,"title_t03.mkv"
 """
 
+# A multi-angle DVD, recorded from the Star Wars box set. MakeMKV lists each
+# angle as its own title, and nothing in the scan tells them apart: identical
+# runtime to the second, identical size. Taking both shelved the film twice.
+MULTI_ANGLE_DVD = """\
+MSG:1005,0,1,"MakeMKV v1.18.4 darwin(arm64-release) started","%1 started","MakeMKV v1.18.4"
+MSG:3007,0,0,"Using direct disc access mode","Using direct disc access mode"
+MSG:3025,0,0,"Title #1 was added (66 cell(s), 2:04:09)","...","..."
+MSG:3011,0,0,"Angle #2 was added for title #1","...","..."
+MSG:3011,0,0,"Angle #3 was added for title #1","...","..."
+CINFO:1,6206,"DVD disc"
+CINFO:2,0,"A_NEW_HOPE"
+CINFO:32,0,"A_NEW_HOPE"
+TINFO:0,9,0,"2:04:09"
+TINFO:0,11,0,"7301444403"
+TINFO:0,27,0,"title_t00.mkv"
+TINFO:1,9,0,"2:04:09"
+TINFO:1,11,0,"7301444403"
+TINFO:1,27,0,"title_t01.mkv"
+TINFO:2,9,0,"0:00:07"
+TINFO:2,11,0,"7968227"
+TINFO:2,27,0,"title_t02.mkv"
+TINFO:3,9,0,"0:00:26"
+TINFO:3,11,0,"19922944"
+TINFO:3,27,0,"title_t03.mkv"
+"""
+
 # Four titles at almost exactly the same length, and a season in the label.
 TV_DVD = """\
 MSG:1005,0,1,"MakeMKV v1.17.7 darwin(arm64-release) started","%1 started","MakeMKV v1.17.7"

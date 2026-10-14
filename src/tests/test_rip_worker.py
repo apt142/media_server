@@ -7,10 +7,12 @@ from media_server.configuration import Configuration
 from media_server.job_catalog import JobCatalog, JobState
 from media_server.makemkv import MakeMkv
 from media_server.file_names import safe_file_component
-from media_server.rip_worker import RipSettings, RipWorker
+from media_server.makemkv import DiscTitle
+from media_server.rip_worker import RipSettings, RipWorker, without_repeated_features
 from media_server.volume_space import VolumeSpace
 from tests import makemkv_fixtures
 from tests.fake_drive import RecordingDiscDrive
+from tests.fake_film_lookup import FakeFilmLookup
 from tests.fake_makemkv import FakeMakeMkvCommand
 
 
@@ -30,6 +32,9 @@ class RipWorkerTestCase(unittest.TestCase):
         self.addCleanup(self.catalog.close)
         self.drive = RecordingDiscDrive()
         self.announced_lines: list[str] = []
+        # Empty by default, so a test that says nothing about years gets none
+        # and reaches no web service doing it.
+        self.film_lookup = FakeFilmLookup()
 
     def _worker(
         self,
@@ -54,6 +59,7 @@ class RipWorkerTestCase(unittest.TestCase):
             drive=self.drive,
             announce=self.announced_lines.append,
             settings=settings,
+            film_lookup=self.film_lookup,
         )
 
 
@@ -678,6 +684,73 @@ class TryingHarderTests(RipWorkerTestCase):
 
         self.assertEqual(self.fake_command.copied_destinations, [])
         self.assertEqual(self.fake_command.ripped_sources, ["disc:0"])
+
+
+class MultiAngleDiscTests(RipWorkerTestCase):
+    """A disc that lists its angles as titles holds one film, not several.
+
+    The Star Wars box set shelved A New Hope three times, and Plex stacked the
+    parts into a six hour film that played through and started again.
+    """
+
+    def test_the_film_is_taken_once(self):
+        outcome = self._worker(makemkv_fixtures.MULTI_ANGLE_DVD).rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.fake_command.ripped_title_ids, [0])
+        self.assertEqual(len(outcome.ripped_files), 1)
+
+    def test_it_says_why_it_took_only_one(self):
+        self._worker(makemkv_fixtures.MULTI_ANGLE_DVD).rip_disc_in_drive()
+
+        announced_output = "\n".join(self.announced_lines)
+        self.assertIn("same film more than once", announced_output)
+
+    def test_a_real_double_feature_still_gets_both_films(self):
+        """The guard against repeats must not cost the case it sits next to."""
+        outcome = self._worker(
+            makemkv_fixtures.DOUBLE_FEATURE_DVD
+        ).rip_disc_in_drive()
+
+        self.assertEqual(self.fake_command.ripped_title_ids, [0, 1])
+        self.assertEqual(len(outcome.ripped_files), 2)
+
+
+class RepeatedFeatureTests(unittest.TestCase):
+    """Repeats are matched on the exact second, which is what angles share."""
+
+    def _title(self, title_id: int, length_seconds: int, size_bytes: int) -> DiscTitle:
+        return DiscTitle(
+            title_id=title_id, length_seconds=length_seconds, size_bytes=size_bytes
+        )
+
+    def test_every_copy_beyond_the_first_is_dropped(self):
+        angles = [self._title(index, 7449, 7301444403) for index in range(3)]
+
+        kept = without_repeated_features(angles)
+
+        self.assertEqual([title.title_id for title in kept], [0])
+
+    def test_the_largest_copy_is_the_one_kept(self):
+        """Angles can differ slightly in size; the fuller one is worth having."""
+        titles = [
+            self._title(0, 7449, 7_000_000_000),
+            self._title(1, 7449, 7_301_444_403),
+        ]
+
+        kept = without_repeated_features(titles)
+
+        self.assertEqual([title.title_id for title in kept], [1])
+
+    def test_titles_of_different_lengths_are_all_kept_in_disc_order(self):
+        titles = [
+            self._title(0, 4324, 3_000_000_000),
+            self._title(1, 4360, 3_100_000_000),
+        ]
+
+        kept = without_repeated_features(titles)
+
+        self.assertEqual([title.title_id for title in kept], [0, 1])
 
 
 class FolderNamingTests(unittest.TestCase):
