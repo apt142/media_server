@@ -902,7 +902,9 @@ The sign is `Device not configured` against `/dev/rdiskN`, with no SCSI read err
 Error 'Posix error - Device not configured' occurred while reading '/dev/rdisk4' at offset '14490009600'
 ```
 
-That is not a bad read. It means the device node stopped existing — the drive dropped off the bus mid-rip. When the same disc does it at the same offset every time while other discs rip fine, the disc is triggering it, and retrying cannot help: MakeMKV reads a title in one go, so every attempt starts at zero and walks into the same place.
+That is not a bad read. It means the device node stopped existing — the drive dropped off the bus mid-rip, and usually has to be unplugged and plugged back in before it will answer again. Retrying cannot help: MakeMKV reads a title in one go, so every attempt starts at zero and walks into the same place.
+
+The discs that provoke it are the ones that ask the most of the drive — a 30–35 Mbps Blu-ray feature, or a DVD whose structure forces heavy retries. The disc decides where the drive gives way; it is not the disc refusing to be read.
 
 `scripts/rescue-disc.sh` copies the disc instead, keeping a map of what it already has so each run continues rather than restarts:
 
@@ -917,8 +919,10 @@ brew install ddrescue
 Two passes bracket the bad region from both sides. What is left unread stays as zeros in the image — a hole of a hundred megabytes is a few seconds of glitched video in a film that otherwise would not exist. Then rip from the image rather than the disc:
 
 ```bash
-/Applications/MakeMKV.app/Contents/MacOS/makemkvcon mkv iso:~/Media/Rips/images/"Red Sparrow.iso" all ~/Media/Rips/raw
+./media-server rip --from-image ~/Media/Rips/images/"Red Sparrow.iso"
 ```
+
+That is an ordinary rip in every respect except where it reads from. The image is classified as a film or a show, the main feature is picked out, repeated titles are dropped, the release year is looked up, and the job joins the encode queue like any other. The drive is never opened, so whatever is sitting in it is left alone. Titles covering a hole in the image refuse and are named; the rest of the disc still comes through.
 
 Use `--from 15G` to start a pass past a spot that hangs the drive. The script runs one pass and stops on purpose: a drive that needs unplugging before it answers again cannot be looped over.
 

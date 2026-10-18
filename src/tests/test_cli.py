@@ -492,6 +492,36 @@ class RipCommandTests(CommandLineTestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("MakeMKV is not installed", output)
 
+    def test_ripping_from_an_image_queues_it_without_opening_the_drive(self):
+        self._write_configuration_file()
+        image_file = self.temporary_root / "FuryRoad.iso"
+        image_file.write_bytes(b"not really an image, but it is a file")
+
+        exit_code, output = self._run_with_disc(
+            f"rip --from-image {image_file}", makemkv_fixtures.FILM_BLURAY
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("The image is done and the transcode is queued.", output)
+
+    def test_an_image_that_is_not_there_is_reported_rather_than_crashing(self):
+        self._write_configuration_file()
+        missing = self.temporary_root / "Nothing.iso"
+
+        exit_code, output = self._run_with_disc(
+            f"rip --from-image {missing}", makemkv_fixtures.FILM_BLURAY
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(str(missing), output)
+
+    def test_copying_an_image_that_is_already_a_copy_is_refused(self):
+        """--try-harder would go to the drive, which is the thing being avoided."""
+        self._write_configuration_file()
+
+        with self.assertRaises(SystemExit):
+            self._run_command("rip", "--try-harder", "--from-image", "/tmp/x.iso")
+
 
 class EncodeCommandTests(CommandLineTestCase):
     def _run_encode(self, *extra_arguments: str) -> tuple[int, str]:

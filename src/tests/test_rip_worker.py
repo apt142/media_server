@@ -771,5 +771,76 @@ class FolderNamingTests(unittest.TestCase):
                 self.assertEqual(safe_file_component(disc_label), expected_name)
 
 
+class RipFromImageTests(RipWorkerTestCase):
+    """--from-image reads a rescued image and queues it like any other disc."""
+
+    def _image_file(self) -> Path:
+        image_file = self.configuration.staging_root / "images" / "Fury Road.iso"
+        image_file.parent.mkdir(parents=True, exist_ok=True)
+        image_file.write_bytes(b"not really an image, but it is a file")
+        return image_file
+
+    def test_everything_is_read_from_the_image_and_not_the_drive(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+        image_file = self._image_file()
+
+        worker.rip_disc_image(image_file)
+
+        asked = self.fake_command.scanned_sources + self.fake_command.ripped_sources
+        self.assertTrue(asked)
+        self.assertTrue(all(source == f"iso:{image_file}" for source in asked))
+
+    def test_the_image_reaches_the_encode_queue_like_any_other_disc(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+
+        outcome = worker.rip_disc_image(self._image_file())
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertEqual(self.catalog.job_with_id(outcome.job_id).title, "The Matrix")
+
+    def test_the_drive_is_left_shut(self):
+        """Whatever is in the drive is not what was read, so it stays put."""
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+
+        outcome = worker.rip_disc_image(self._image_file())
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertFalse(self.drive.has_ejected)
+        self.assertNotIn("The disc is out", outcome.message)
+
+    def test_a_disc_already_ripped_does_not_eject_the_one_in_the_drive(self):
+        """The duplicate path ejects too, and has to be just as careful."""
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+        image_file = self._image_file()
+        worker.rip_disc_image(image_file)
+
+        outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_image(image_file)
+
+        self.assertTrue(outcome.is_duplicate)
+        self.assertFalse(self.drive.has_ejected)
+
+    def test_an_image_that_is_not_there_is_said_plainly(self):
+        worker = self._worker(makemkv_fixtures.FILM_BLURAY)
+        missing = self.configuration.staging_root / "images" / "Nothing.iso"
+
+        outcome = worker.rip_disc_image(missing)
+
+        self.assertFalse(outcome.is_ripped)
+        self.assertIn(str(missing), outcome.message)
+        self.assertEqual(self.fake_command.scanned_sources, [])
+
+    def test_a_title_lost_to_a_hole_is_reported_and_the_rest_still_comes(self):
+        """A rescued image has gaps, so some titles will refuse. Say which."""
+        worker = self._worker(makemkv_fixtures.TV_DVD, unreadable_title_ids=(1,))
+
+        outcome = worker.rip_disc_image(self._image_file())
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertIn(
+            "title 1 would not decrypt, skipping it",
+            "\n".join(self.announced_lines),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

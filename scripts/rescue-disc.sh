@@ -251,7 +251,7 @@ main() {
     print_step "Got the whole disc into ${image_file}"
     print_line ""
     print_line "Now rip from the image rather than the disc:"
-    print_line "  \"${MAKE_MKV_COMMAND}\" mkv iso:\"${image_file}\" all \"${RIPS_DIRECTORY}/raw\""
+    print_line "  ./media-server rip --from-image \"${image_file}\""
     exit 0
   fi
 
@@ -259,7 +259,7 @@ main() {
   print_what_to_do_next "$map_file"
   print_line ""
   print_line "When both passes are done, rip whatever was recovered:"
-  print_line "  \"${MAKE_MKV_COMMAND}\" mkv iso:\"${image_file}\" all \"${RIPS_DIRECTORY}/raw\""
+  print_line "  ./media-server rip --from-image \"${image_file}\""
   exit 1
 }
 

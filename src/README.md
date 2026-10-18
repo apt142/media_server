@@ -301,7 +301,20 @@ than reporting a bad read.
 
 At that point the drive has usually hung and wants unplugging. For a disc that
 will not survive even a copy, `scripts/rescue-disc.sh` images it in resumable
-passes instead — see the main README.
+passes instead — see the main README — and `rip --from-image` takes it from
+there:
+
+```bash
+./media-server rip --from-image ~/Media/Rips/images/"Red Sparrow.iso"
+```
+
+`MakeMkv.reading_image` points the same reader at `iso:<path>` the way
+`reading_from` points it at a copied folder, so the whole of `RipWorker` runs
+unchanged and the rescued disc is recorded like any other. The one thing that
+does change is the drive: it is never opened, because the disc that was read is
+not the one sitting in it. `--from-image` and `--try-harder` are mutually
+exclusive, since copying something that is already a copy would send MakeMKV
+back to the drive to do it.
 
 ### Overruling the film-or-show call
 

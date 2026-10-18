@@ -215,8 +215,10 @@ class PipelineCommands:
                 print(f"        {job.failure_reason}")
         return 0
 
-    def rip_disc_in_drive(self, settings: RipSettings) -> int:
-        """Rip whatever is in the drive, then eject it."""
+    def rip_disc(
+        self, settings: RipSettings, image_file: Path | None = None
+    ) -> int:
+        """Rip whatever is in the drive, or an image of a disc that was."""
         makemkv = MakeMkv()
         if not makemkv.is_installed():
             print(MAKEMKV_MISSING_MESSAGE)
@@ -229,7 +231,10 @@ class PipelineCommands:
             settings=settings,
             film_lookup=FilmLookup(),
         )
-        outcome = worker.rip_disc_in_drive()
+        if image_file is not None:
+            outcome = worker.rip_disc_image(image_file)
+        else:
+            outcome = worker.rip_disc_in_drive()
         print(outcome.message)
         if outcome.is_ripped or outcome.is_duplicate:
             return 0
@@ -459,7 +464,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
         dest="is_rerip_allowed",
         help="Rip a disc that has already been through, replacing the first attempt",
     )
-    rip_command.add_argument(
+    # Both read a copy rather than the drive, so asking for both is asking to
+    # copy a copy, and --try-harder would go to the drive to do it.
+    disc_source = rip_command.add_mutually_exclusive_group()
+    disc_source.add_argument(
         "--try-harder",
         action="store_true",
         dest="is_trying_harder",
@@ -467,6 +475,13 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "Copy the whole disc first and rip from the copy. Slower, and needs "
             "room for the entire disc, so keep it for a disc that fails normally"
         ),
+    )
+    disc_source.add_argument(
+        "--from-image",
+        type=Path,
+        dest="image_file",
+        metavar="IMAGE",
+        help="Rip a disc image left by scripts/rescue-disc.sh instead of the drive",
     )
     disc_kind = rip_command.add_mutually_exclusive_group()
     disc_kind.add_argument(
@@ -573,7 +588,7 @@ def main(argument_values: list[str] | None = None) -> int:
 
 def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> int:
     if arguments.command == "rip":
-        return commands.rip_disc_in_drive(
+        return commands.rip_disc(
             RipSettings(
                 minimum_feature_seconds=arguments.minimum_feature_minutes * 60,
                 is_main_feature_only=arguments.is_main_feature_only,
@@ -582,7 +597,8 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
                 forced_media_kind=media_kind_asked_for(arguments),
                 forced_title=arguments.forced_title.strip(),
                 forced_season_number=arguments.forced_season_number,
-            )
+            ),
+            arguments.image_file,
         )
     if arguments.command == "scan":
         return commands.scan_disc()

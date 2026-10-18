@@ -250,10 +250,24 @@ class MakeMkv:
         copied whole. Once it has been, nothing further needs the drive, and
         the titles come out of the copy exactly as they would have off the disc.
         """
+        return self._reading(f"file:{backup_folder}")
+
+    def reading_image(self, image_file: Path) -> "MakeMkv":
+        """The same MakeMKV, reading a disc image rather than the drive.
+
+        A disc the drive will not get through can still be copied sector by
+        sector, which is what scripts/rescue-disc.sh leaves behind. MakeMKV
+        reads an image as readily as it reads the drive, so a rescued disc
+        reaches the queue by the ordinary route rather than a separate one.
+        """
+        return self._reading(f"iso:{image_file}")
+
+    def _reading(self, source: str) -> "MakeMkv":
+        """A copy of this pointed somewhere else, configured the same way."""
         return MakeMkv(
             run_command=self.run_command,
             makemkv_command=self.makemkv_command,
-            source=f"file:{backup_folder}",
+            source=source,
         )
 
     def scan_disc(self) -> DiscScan:

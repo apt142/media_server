@@ -169,10 +169,49 @@ class RipWorker:
         # Handed in so tests reach no web service, and so a caller that wants
         # nothing to do with the network can pass None and get no year.
         self.film_lookup = film_lookup or FilmLookup()
+        # Set afresh by whichever rip is asked for, and read only by _eject.
+        self.is_reading_image = False
+
+    def _eject(self) -> None:
+        """Open the drive, unless this rip never touched it.
+
+        Ripping an image leaves the drive shut: whatever is sitting in it is
+        not what was read, and may well be the next disc waiting to go.
+        """
+        if self.is_reading_image:
+            return
+        self.drive.eject()
+
+    def _where_the_disc_is(self) -> str:
+        """Said at the end of a rip, where "the disc is out" would be untrue."""
+        if self.is_reading_image:
+            return "The image is done"
+        return "The disc is out"
 
     def rip_disc_in_drive(self) -> RipOutcome:
         """Read the disc, rip it, record it, and eject it."""
-        disc_scan = self.makemkv.scan_disc()
+        self.is_reading_image = False
+        return self._rip_what_makemkv_can_read(self.makemkv)
+
+    def rip_disc_image(self, image_file: Path) -> RipOutcome:
+        """Rip an image of a disc, with the drive never involved.
+
+        An image rescued from a disc the drive could not finish is read here
+        exactly as the disc would have been, so it is classified, named, and
+        recorded the same way and joins the encode queue alongside everything
+        else. Where the rescue left holes, the titles covering them refuse and
+        are reported; the rest of the disc still comes through.
+        """
+        if not image_file.is_file():
+            return RipOutcome(message=f"There is no disc image at {image_file}.")
+
+        self.is_reading_image = True
+        self.announce(f"Reading the image at {image_file}. The drive is not involved.")
+        return self._rip_what_makemkv_can_read(self.makemkv.reading_image(image_file))
+
+    def _rip_what_makemkv_can_read(self, reader: MakeMkv) -> RipOutcome:
+        """Identify whatever ``reader`` is pointed at, then rip what is on it."""
+        disc_scan = reader.scan_disc()
         self._announce_makemkv_messages(disc_scan)
 
         if not disc_scan.has_titles:
@@ -194,7 +233,7 @@ class RipWorker:
 
         if self.settings.is_trying_harder:
             return self._rip_through_copy(disc_scan, verdict)
-        return self._select_and_rip(disc_scan, verdict, disc_scan, self.makemkv)
+        return self._select_and_rip(disc_scan, verdict, disc_scan, reader)
 
     def _select_and_rip(
         self,
@@ -310,7 +349,7 @@ class RipWorker:
         None means the way is clear and the rip should carry on.
         """
         if not self.settings.is_rerip_allowed:
-            self.drive.eject()
+            self._eject()
             return RipOutcome(
                 message=(
                     f"Already ripped this disc as #{earlier_job.job_id} "
@@ -482,12 +521,12 @@ class RipWorker:
                 disc_scan, verdict, staged_path, len(attempt.ripped_files)
             )
         )
-        self.drive.eject()
+        self._eject()
 
         return RipOutcome(
             message=(
                 f"Ripped {len(attempt.ripped_files)} title(s) as job #{job_id}. "
-                "The disc is out and the transcode is queued."
+                f"{self._where_the_disc_is()} and the transcode is queued."
             ),
             job_id=job_id,
             is_ripped=True,
