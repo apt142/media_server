@@ -91,11 +91,21 @@ optical_device_node() {
   printf '%s\n' "${buffered_node/\/dev\/disk//dev/rdisk}"
 }
 
+# diskutil reports several byte counts, and on a disc with a mounted volume the
+# last of them is "Volume Free Space: 0 B (0 Bytes)". Taking whichever came last
+# therefore read a full disc as empty. The disc cannot be smaller than anything
+# measured on it, so the largest figure is the one wanted.
+#
+# Not knowing the size is something the caller handles, so a drive that will not
+# answer must not take the run down with it: under pipefail a failed diskutil
+# fails the whole pipeline, and under set -e that ends the script in silence.
 disc_size_bytes() {
   local node="$1"
   diskutil info "${node/rdisk/disk}" 2>/dev/null \
     | sed -n 's/.*(\([0-9][0-9]*\) Bytes).*/\1/p' \
-    | tail -1
+    | sort -n \
+    | tail -1 \
+    || true
 }
 
 # An image is a byte for byte copy, so the disc's own size is the whole of it.
@@ -128,15 +138,6 @@ stopped_position_bytes() {
   hex_position="$(awk '!/^#/ {print $1; exit}' "$map_file")"
   [[ -n "$hex_position" ]] || return 0
   printf '%d\n' "$hex_position" 2>/dev/null || true
-}
-
-ddrescue_direction_flags() {
-  if [[ "$is_reading_backwards" -eq 1 ]]; then
-    printf '%s\n' "--reverse"
-  fi
-  if [[ -n "$start_position" ]]; then
-    printf '%s\n' "--input-position=${start_position}"
-  fi
 }
 
 describe_pass() {
@@ -209,17 +210,32 @@ main() {
     exit 1
   fi
 
+  # A size that could not be read is said out loud rather than passed to the
+  # room check, which would read it as zero and wave through a disc that does
+  # not fit.
   local size_bytes
   size_bytes="$(disc_size_bytes "$device_node")"
-  if [[ -n "$size_bytes" ]]; then
+  if [[ "$size_bytes" =~ ^[0-9]+$ && "$size_bytes" -gt 0 ]]; then
     print_line "Disc holds $(human_gigabytes "$size_bytes")"
     require_room_for_image "$size_bytes" "$image_directory"
+  else
+    print_line "Could not tell how big the disc is, so room is not being checked."
+    print_line "There is $(free_gigabytes_at "$image_directory") GB free where the image goes."
   fi
 
-  local direction_flags=()
-  while IFS= read -r flag; do
-    direction_flags+=("$flag")
-  done < <(ddrescue_direction_flags)
+  # The flags that never vary start the list, so it cannot end up empty. The
+  # bash macOS ships expands an empty array as an unset variable, and under
+  # set -u that ends the run rather than passing no flags.
+  #
+  # --no-scrape skips the slow sector-by-sector retry. On a drive that hangs
+  # rather than reporting a bad sector, scraping only buys more chances to hang.
+  local ddrescue_flags=("--block-size=${SECTOR_SIZE}" "--no-scrape")
+  if [[ "$is_reading_backwards" -eq 1 ]]; then
+    ddrescue_flags+=("--reverse")
+  fi
+  if [[ -n "$start_position" ]]; then
+    ddrescue_flags+=("--input-position=${start_position}")
+  fi
 
   print_step "Reading ${device_node} $(describe_pass)"
   print_line "Stop with Ctrl-C whenever you like. The next run carries on from here."
@@ -227,11 +243,7 @@ main() {
 
   local ddrescue_status=0
   set +e
-  # --no-scrape skips the slow sector-by-sector retry. On a drive that hangs
-  # rather than reporting a bad sector, scraping only buys more chances to hang.
-  sudo ddrescue --block-size="$SECTOR_SIZE" --no-scrape \
-    "${direction_flags[@]}" \
-    "$device_node" "$image_file" "$map_file"
+  sudo ddrescue "${ddrescue_flags[@]}" "$device_node" "$image_file" "$map_file"
   ddrescue_status=$?
   set -e
 

@@ -444,10 +444,12 @@ FAILURE_SIGNS = (
     FailureSign(
         markers=("ipc/send", "device not configured", "os x ipc error"),
         explanation=(
-            "The drive stopped answering part way through, rather than reporting "
-            "a bad read. If other discs rip fine, it is this disc making the "
-            "drive give up; if they do not, check the cable and power to the "
-            "drive."
+            "The drive stopped answering part way through, rather than "
+            "reporting a bad read, and usually has to be unplugged and plugged "
+            "back in before it will answer again. Trying the title again "
+            "starts it from the beginning and tends to reach the same place, "
+            "so copy the disc in resumable passes instead: "
+            "./scripts/rescue-disc.sh"
         ),
     ),
     FailureSign(

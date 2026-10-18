@@ -244,11 +244,16 @@ class FailureExplanationTests(unittest.TestCase):
         self.assertIn("stopped answering", explanation)
         self.assertNotIn("expired", explanation)
 
-    def test_a_drive_that_stopped_answering_says_how_to_tell_disc_from_cable(self):
+    def test_a_drive_that_stopped_answering_points_at_the_way_out(self):
+        """Retrying is the one thing that cannot work, so it says what can.
+
+        A title is read in one go, so a second attempt starts from the
+        beginning and arrives back where the drive gave up.
+        """
         explanation = self._explain(makemkv_fixtures.DRIVE_DROPOUT_OUTPUT)
 
-        self.assertIn("other discs", explanation)
-        self.assertIn("cable", explanation)
+        self.assertIn("rescue-disc.sh", explanation)
+        self.assertIn("unplugged", explanation)
 
     def test_a_damaged_disc_is_told_apart_from_a_drive_dropping_out(self):
         explanation = self._explain(makemkv_fixtures.DAMAGED_DISC_OUTPUT)
