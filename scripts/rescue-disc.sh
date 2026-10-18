@@ -229,7 +229,7 @@ main() {
   #
   # --no-scrape skips the slow sector-by-sector retry. On a drive that hangs
   # rather than reporting a bad sector, scraping only buys more chances to hang.
-  local ddrescue_flags=("--block-size=${SECTOR_SIZE}" "--no-scrape")
+  local ddrescue_flags=("--sector-size=${SECTOR_SIZE}" "--no-scrape")
   if [[ "$is_reading_backwards" -eq 1 ]]; then
     ddrescue_flags+=("--reverse")
   fi
