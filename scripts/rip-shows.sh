@@ -57,8 +57,8 @@ Nothing is ripped until you have seen the episode list and agreed to it.
                          reach the same quality in a slightly smaller file.
   --audio-langs LIST     Keep every audio track in these languages, e.g.
                          eng,spa. Forces an .mkv so surround audio survives.
-  --subtitle-langs LIST  Keep subtitles in these languages, switched off by
-                         default. Forces an .mkv.
+  --subtitle-langs LIST  Keep subtitles in these languages, none switched on
+                         by itself. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake and keep the decrypted .mkv
   --ask                  Stop and confirm each guess, and the episode plan,

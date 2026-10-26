@@ -93,6 +93,11 @@ class RipSettings:
     # rather than assumed.
     is_trying_harder: bool = False
 
+    # Whether the finished file should carry the disc's subtitles. Asked for
+    # per disc rather than set once, because carrying subtitles means an MKV
+    # rather than an MP4, and most discs have no need of either.
+    is_keeping_subtitles: bool = False
+
     @property
     def is_media_kind_forced(self) -> bool:
         return bool(self.forced_media_kind)
@@ -609,6 +614,7 @@ class RipWorker:
             part_number=self._part_number_for(disc_scan, verdict),
             disc_fingerprint=disc_scan.fingerprint(),
             disc_format=disc_scan.media_kind,
+            is_keeping_subtitles=self.settings.is_keeping_subtitles,
             season_number=season_number,
             first_episode_number=self.catalog.next_episode_number_for(
                 title, season_number

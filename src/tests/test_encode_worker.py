@@ -122,6 +122,37 @@ class EncodingAFilmTests(EncodeWorkerTestCase):
         )
         self.assertEqual(arguments[arguments.index("--encoder-level") + 1], "3.1")
 
+    def test_subtitles_asked_for_at_rip_time_reach_handbrake(self):
+        """The disc is long gone by the time this runs, so the job remembers.
+
+        This is the whole of the bug: the encoder could carry subtitles, but
+        nothing ever told it to, so a Japanese film came out of the pipeline
+        with no way to read it.
+        """
+        self._stage_job(is_keeping_subtitles=True)
+
+        self._worker().encode_next_job()
+
+        self.assertIn("--all-subtitles", self.handbrake.received_argument_lists[0])
+
+    def test_a_disc_with_subtitles_is_written_as_an_mkv(self):
+        """MP4 cannot hold the bitmap subtitles a disc carries."""
+        job_id = self._stage_job(is_keeping_subtitles=True)
+
+        self._worker().encode_next_job()
+
+        encoded_path = self.catalog.job_with_id(job_id).encoded_path
+        self.assertTrue(
+            (encoded_path / "Movies/The Matrix (1999)/The Matrix (1999).mkv").is_file()
+        )
+
+    def test_a_disc_nobody_asked_for_subtitles_on_does_not_get_them(self):
+        self._stage_job()
+
+        self._worker().encode_next_job()
+
+        self.assertNotIn("--all-subtitles", self.handbrake.received_argument_lists[0])
+
     def test_handbrake_warnings_still_count_as_a_usable_file(self):
         self._stage_job()
         forgiving_handbrake = FakeHandBrake(exit_code=1)

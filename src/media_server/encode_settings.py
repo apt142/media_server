@@ -54,6 +54,16 @@ MKV_EXTENSION = "mkv"
 # HandBrakeCLI uses 1 for "finished with warnings". That is still a usable file.
 HIGHEST_SUCCESSFUL_EXIT_CODE = 1
 
+# Subtitles from a disc are pictures, not text: PGS on Blu-ray, VobSub on DVD.
+# No Roku can draw either, so Plex burns them into the video when one is
+# switched on, which turns a direct play into a full transcode for the length
+# of the film. That is a fine price for a film you need them for, and a steep
+# one for every other disc, so nothing is flagged to come on by itself.
+#
+# "none" is passed rather than left out, because HandBrake will otherwise pick
+# a default of its own and the whole point is that it should not.
+NO_DEFAULT_SUBTITLE = "none"
+
 
 @dataclass(frozen=True)
 class EncodeSettings:
@@ -61,7 +71,7 @@ class EncodeSettings:
 
     disc_format: str
     audio_languages: str = ""
-    subtitle_languages: str = ""
+    is_keeping_subtitles: bool = False
     quality_override: str = ""
     encoder_speed: str = ENCODER_SPEED
 
@@ -89,7 +99,7 @@ class EncodeSettings:
 
     @property
     def is_keeping_extra_tracks(self) -> bool:
-        return bool(self.audio_languages or self.subtitle_languages)
+        return bool(self.audio_languages) or self.is_keeping_subtitles
 
     @property
     def container_extension(self) -> str:
@@ -149,15 +159,21 @@ class EncodeSettings:
                 "--audio-fallback",
                 "ac3",
             ]
-        if self.subtitle_languages:
-            # Carry the subtitles but leave them switched off, so nothing is
-            # burned into the picture and Plex can offer them as a choice.
+        if self.is_keeping_subtitles:
+            # No language list, which is how HandBrake is told "every track":
+            # --all-subtitles takes any language when it has no list to match
+            # against. Naming languages would mean guessing at rip time which
+            # ones a disc carries, and the cost of guessing wrong is another
+            # trip through the drive, against a few megabytes for being wrong
+            # the generous way.
+            #
+            # Which one to read is left to Plex, where it is a menu rather than
+            # a re-rip. Nothing is burned into the picture, so that choice
+            # stays open rather than being made once, here, forever.
             arguments += [
                 "--all-subtitles",
-                "--subtitle-lang-list",
-                self.subtitle_languages,
                 "--subtitle-default",
-                "none",
+                NO_DEFAULT_SUBTITLE,
                 "--subtitle-burned",
                 "none",
             ]

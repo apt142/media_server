@@ -522,6 +522,31 @@ class RipCommandTests(CommandLineTestCase):
         with self.assertRaises(SystemExit):
             self._run_command("rip", "--try-harder", "--from-image", "/tmp/x.iso")
 
+    def test_subtitles_asked_for_are_written_down_against_the_job(self):
+        """The transcode happens later, so the disc cannot be asked again."""
+        self._write_configuration_file()
+
+        self._run_with_disc("rip --subtitles", makemkv_fixtures.FILM_BLURAY)
+
+        configuration = Configuration(
+            staging_root=self.staging_root, library_root=self.library_root
+        )
+        with JobCatalog(configuration.catalog_path) as catalog:
+            job = catalog.job_with_id(1)
+        self.assertTrue(job.is_keeping_subtitles)
+
+    def test_a_rip_without_the_flag_asks_for_no_subtitles(self):
+        self._write_configuration_file()
+
+        self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
+
+        configuration = Configuration(
+            staging_root=self.staging_root, library_root=self.library_root
+        )
+        with JobCatalog(configuration.catalog_path) as catalog:
+            job = catalog.job_with_id(1)
+        self.assertFalse(job.is_keeping_subtitles)
+
 
 class EncodeCommandTests(CommandLineTestCase):
     def _run_encode(self, *extra_arguments: str) -> tuple[int, str]:

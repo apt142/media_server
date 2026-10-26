@@ -304,6 +304,41 @@ class CatalogPersistenceTests(JobCatalogTestCase):
             )
 
 
+class OlderCatalogTests(JobCatalogTestCase):
+    """A catalogue written before a column existed still has to open.
+
+    The real one has hundreds of jobs in it, and CREATE TABLE IF NOT EXISTS
+    does nothing to a table that is already there, so a new column reaches it
+    only by being added on the way in.
+    """
+
+    def _catalog_without_the_subtitle_column(self) -> Path:
+        self._record_disc()
+        catalog_path = self.catalog.catalog_path
+        self.catalog._connection.execute(
+            "ALTER TABLE jobs DROP COLUMN is_keeping_subtitles"
+        )
+        self.catalog.close()
+        return catalog_path
+
+    def test_a_catalog_missing_a_column_gains_it_on_opening(self):
+        catalog_path = self._catalog_without_the_subtitle_column()
+
+        with JobCatalog(catalog_path) as reopened_catalog:
+            job = reopened_catalog.job_with_id(1)
+
+        self.assertFalse(job.is_keeping_subtitles)
+
+    def test_the_jobs_already_in_it_are_left_alone(self):
+        catalog_path = self._catalog_without_the_subtitle_column()
+
+        with JobCatalog(catalog_path) as reopened_catalog:
+            job = reopened_catalog.job_with_id(1)
+
+        self.assertEqual(job.disc_label, self.DISC_LABEL)
+        self.assertEqual(job.state, JobState.STAGED)
+
+
 class SharingTheCatalogBetweenProcessesTests(JobCatalogTestCase):
     """The watcher and the encoder run at once against this one file."""
 

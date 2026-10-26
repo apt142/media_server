@@ -33,7 +33,7 @@ class ContainerChoiceTests(unittest.TestCase):
         self.assertIn("--optimize", settings.command_arguments(Path("in"), Path("out")))
 
     def test_keeping_subtitles_forces_mkv(self):
-        settings = EncodeSettings(disc_format="bluray", subtitle_languages="eng")
+        settings = EncodeSettings(disc_format="bluray", is_keeping_subtitles=True)
 
         self.assertEqual(settings.container_extension, "mkv")
 
@@ -95,14 +95,32 @@ class CommandArgumentTests(unittest.TestCase):
         self.assertNotIn("--quality", without_override)
         self.assertEqual(with_override[with_override.index("--quality") + 1], "18")
 
-    def test_subtitles_are_carried_but_left_switched_off(self):
-        settings = EncodeSettings(disc_format="bluray", subtitle_languages="eng")
+    def test_every_subtitle_track_is_taken_whatever_its_language(self):
+        """No language list is how HandBrake is told to take any language.
+
+        Naming languages would mean guessing at rip time what a disc carries,
+        and being wrong means putting the disc back in the drive.
+        """
+        settings = EncodeSettings(disc_format="bluray", is_keeping_subtitles=True)
 
         arguments = settings.command_arguments(self.SOURCE_FILE, self.OUTPUT_FILE)
 
         self.assertIn("--all-subtitles", arguments)
-        self.assertEqual(arguments[arguments.index("--subtitle-burned") + 1], "none")
+        self.assertNotIn("--subtitle-lang-list", arguments)
+
+    def test_no_subtitle_is_switched_on_by_itself(self):
+        """A switched-on track costs a transcode on every Roku, every time.
+
+        Disc subtitles are pictures, which no Roku can draw, so Plex burns a
+        default track into the video for the length of the film. "none" is
+        said rather than left out, because HandBrake picks its own otherwise.
+        """
+        settings = EncodeSettings(disc_format="bluray", is_keeping_subtitles=True)
+
+        arguments = settings.command_arguments(self.SOURCE_FILE, self.OUTPUT_FILE)
+
         self.assertEqual(arguments[arguments.index("--subtitle-default") + 1], "none")
+        self.assertEqual(arguments[arguments.index("--subtitle-burned") + 1], "none")
 
     def test_lossless_audio_is_copied_rather_than_re_encoded(self):
         settings = EncodeSettings(disc_format="bluray", audio_languages="eng")

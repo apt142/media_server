@@ -419,8 +419,11 @@ handbrake_track_flags() {
       "--audio-copy-mask" "$SURROUND_COPY_MASK" "--audio-fallback" "ac3"
   fi
   if [[ -n "$SUBTITLE_LANGUAGES" ]]; then
-    # Carry the subtitles but leave them switched off, so nothing is burned into
-    # the picture and Plex can offer them as a choice.
+    # Carried, but none switched on by itself. Disc subtitles are pictures
+    # rather than text, and no Roku can draw them, so Plex burns a switched-on
+    # track into the video and transcodes the whole film to do it. Worth it
+    # when you need to read along, which is a choice for the Plex menu rather
+    # than one made here for every disc.
     printf '%s\n' "--all-subtitles" "--subtitle-lang-list" "$SUBTITLE_LANGUAGES" \
       "--subtitle-default" "none" "--subtitle-burned" "none"
   fi

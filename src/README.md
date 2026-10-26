@@ -441,6 +441,59 @@ Anything not on this list falls back to pointing at the raw messages. Guessing
 at wording MakeMKV might use would mean confidently naming the wrong cause,
 which sends you off fixing something that was never broken.
 
+### Subtitles are asked for at rip time and remembered
+
+```sh
+./media-server rip --subtitles
+```
+
+The subtitles are HandBrake's business, but the flag is on `rip`, because the
+decision belongs to the disc and the disc is gone by the time the encoder gets
+there. The queue is a backlog, not a pipeline: a Japanese film ripped tonight
+may be transcoded tomorrow with ten other discs between. So the answer is
+written to the job's `is_keeping_subtitles` column and `EncodeWorker` reads it
+back off the job rather than being configured once for everything.
+
+`EncodeWorker` still takes `is_keeping_subtitles` in its constructor, which now
+serves as the fallback for a job that asked for nothing. That parameter had
+been there all along with nothing ever passing it, which is why no disc had
+ever come out with subtitles despite MakeMKV keeping every track.
+
+The flag takes no languages. `--all-subtitles` matches any language when it is
+given no `--subtitle-lang-list` to narrow it, so every track on the disc comes
+across. Naming languages would mean guessing at rip time what a disc carries,
+and the two outcomes are not comparable: guessing wrong means putting the disc
+back in the drive, while guessing generously costs a few megabytes of PGS.
+
+Carrying them forces MKV, since MP4 cannot hold the bitmap subtitles a disc
+actually contains.
+
+### Why no subtitle track is flagged default
+
+Disc subtitles are pictures rather than text: PGS on Blu-ray, VobSub on DVD. No
+Roku can draw either — it is a missing renderer, not a bitrate problem, so no
+model and no firmware changes it. Plex's only recourse is to burn a switched-on
+track into the video, which turns a direct play into a full transcode for the
+length of the film.
+
+That is a reasonable price for the one film you need to read, and a bad one for
+every disc that merely happens to carry subtitles. So `--subtitle-default none`
+is passed and the choice is left to the Plex menu, where it costs nothing and
+can be changed. `none` is said out loud rather than omitted, because HandBrake
+picks a default of its own otherwise.
+
+There is a real way to get subtitles a Roku draws natively, which is to OCR the
+bitmaps into SRT text. Nothing here does that yet; see the root README.
+
+### Adding a column to a catalogue that already has jobs
+
+`is_keeping_subtitles` arrived after the catalogue had hundreds of jobs in it.
+`CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so
+`ADDED_COLUMNS` lists the columns added since and `_add_missing_columns` checks
+`PRAGMA table_info` on every open and issues the `ALTER TABLE`. Anything added
+to the table from here needs a line there too, with a default, so the jobs
+already recorded can answer for themselves.
+
 ### Titles are provisional for now
 
 The job is named from the disc label with the bookkeeping stripped off, so

@@ -68,14 +68,14 @@ class EncodeWorker:
         run_command=run_handbrake,
         announce=print,
         audio_languages: str = "",
-        subtitle_languages: str = "",
+        is_keeping_subtitles: bool = False,
     ):
         self.configuration = configuration
         self.catalog = catalog
         self.run_command = run_command
         self.announce = announce
         self.audio_languages = audio_languages
-        self.subtitle_languages = subtitle_languages
+        self.is_keeping_subtitles = is_keeping_subtitles
 
     def encode_next_job(self) -> EncodeOutcome:
         """Claim the oldest staged job and transcode everything in it."""
@@ -124,10 +124,17 @@ class EncodeWorker:
         return exit_code <= HIGHEST_SUCCESSFUL_EXIT_CODE
 
     def _settings_for(self, job: Job) -> EncodeSettings:
+        """What this one job gets transcoded with.
+
+        Subtitles come from the job rather than from this worker, because they
+        are a property of the disc: a Japanese film wants them and the next
+        disc in the stack does not. The disc is out and forgotten by the time
+        the encoder reaches it, so the rip wrote the answer down.
+        """
         return EncodeSettings(
             disc_format=job.disc_format,
             audio_languages=self.audio_languages,
-            subtitle_languages=self.subtitle_languages,
+            is_keeping_subtitles=job.is_keeping_subtitles or self.is_keeping_subtitles,
         )
 
     def _encoded_path_for(self, job: Job) -> Path:

@@ -63,6 +63,11 @@ class RippedDisc:
     # would throw away most of the picture, and the disc is long gone by then.
     disc_format: str = DVD_DISC_FORMAT
 
+    # Whether to carry the disc's subtitles into the finished file. Recorded
+    # here because the transcode happens long after the disc is out, and by
+    # then nothing else remembers that this one was asked for.
+    is_keeping_subtitles: bool = False
+
     # Where this disc sits in a season. Episodes are numbered from
     # first_episode_number so that disc two carries on where disc one stopped.
     season_number: int | None = None
@@ -98,6 +103,7 @@ class Job:
     failure_reason: str
     attempt_count: int
     disc_format: str = DVD_DISC_FORMAT
+    is_keeping_subtitles: bool = False
     season_number: int | None = None
     first_episode_number: int = 1
     episode_count: int = 0
@@ -161,6 +167,7 @@ SCHEMA_STATEMENTS = (
         failure_reason  TEXT    NOT NULL DEFAULT '',
         attempt_count   INTEGER NOT NULL DEFAULT 0,
         disc_format     TEXT    NOT NULL DEFAULT 'dvd',
+        is_keeping_subtitles INTEGER NOT NULL DEFAULT 0,
         season_number   INTEGER,
         first_episode_number INTEGER NOT NULL DEFAULT 1,
         episode_count   INTEGER NOT NULL DEFAULT 0,
@@ -171,6 +178,11 @@ SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS jobs_by_state ON jobs (state, job_id)",
     "CREATE INDEX IF NOT EXISTS jobs_by_fingerprint ON jobs (disc_fingerprint)",
 )
+
+# Columns added after the table was first written. CREATE TABLE IF NOT EXISTS
+# does nothing to a database that already has the table, so a catalogue with
+# jobs in it never sees a new column without being told about it here.
+ADDED_COLUMNS = (("is_keeping_subtitles", "INTEGER NOT NULL DEFAULT 0"),)
 
 
 class JobCatalog:
@@ -206,6 +218,24 @@ class JobCatalog:
     def _create_schema(self) -> None:
         for statement in SCHEMA_STATEMENTS:
             self._connection.execute(statement)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """Bring an older catalogue up to the current shape.
+
+        Adding a column to a table that has rows is the whole of the migration:
+        every added column carries a default, so the jobs already recorded
+        answer for themselves.
+        """
+        existing_columns = {
+            row["name"]
+            for row in self._connection.execute("PRAGMA table_info(jobs)")
+        }
+        for column_name, column_definition in ADDED_COLUMNS:
+            if column_name not in existing_columns:
+                self._connection.execute(
+                    f"ALTER TABLE jobs ADD COLUMN {column_name} {column_definition}"
+                )
 
     def close(self) -> None:
         self._connection.close()
@@ -223,10 +253,11 @@ class JobCatalog:
             """
             INSERT INTO jobs (
                 disc_label, media_kind, title, year, part_number, state,
-                staged_path, disc_fingerprint, disc_format, season_number,
-                first_episode_number, episode_count, created_at, updated_at
+                staged_path, disc_fingerprint, disc_format, is_keeping_subtitles,
+                season_number, first_episode_number, episode_count,
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ripped_disc.disc_label,
@@ -238,6 +269,7 @@ class JobCatalog:
                 str(ripped_disc.staged_path),
                 ripped_disc.disc_fingerprint,
                 ripped_disc.disc_format,
+                int(ripped_disc.is_keeping_subtitles),
                 ripped_disc.season_number,
                 ripped_disc.first_episode_number,
                 ripped_disc.episode_count,
@@ -436,6 +468,7 @@ def _job_from_row(row: sqlite3.Row) -> Job:
         failure_reason=row["failure_reason"],
         attempt_count=int(row["attempt_count"]),
         disc_format=row["disc_format"],
+        is_keeping_subtitles=bool(row["is_keeping_subtitles"]),
         season_number=row["season_number"],
         first_episode_number=int(row["first_episode_number"]),
         episode_count=int(row["episode_count"]),

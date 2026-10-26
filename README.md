@@ -594,21 +594,33 @@ Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD
 
 **This needs `./scripts/setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./scripts/status.sh`, under **MakeMKV track selection**.
 
-Then ask for what you want, on either ripper or through `scripts/rip.sh`:
+Then ask for what you want, per disc:
 
 ```bash
+./media-server rip --subtitles              # a film you cannot follow without them
 ./scripts/rip.sh --audio-langs eng,spa
-./scripts/rip.sh --subtitle-langs eng
 ./scripts/rip.sh --audio-langs eng,fra --subtitle-langs eng,fra
 ```
 
-Languages are three-letter codes: `eng`, `spa`, `fra`, `deu`, `jpn`.
+Audio languages are three-letter codes: `eng`, `spa`, `fra`, `deu`, `jpn`. `--subtitles` takes none — it keeps **every** subtitle track on the disc. Guessing at languages means a second trip through the drive when the guess is wrong, and the generous version costs a few megabytes.
 
-Two things worth knowing. Asking for either **switches the output to MKV**, because MP4 cannot carry DVD or Blu-ray bitmap subtitles and cannot hold lossless audio. Plex and Roku play MKV, so this costs you nothing. And subtitles are included but **switched off by default** — nothing is burned into the picture, and you pick a track in the Plex player.
+Ask per disc rather than setting it once. Subtitles are for the films you cannot follow without them, and on everything else they are tracks nobody plays in a container you did not need.
 
-Subtitles from discs are images, not text, so the Roku cannot overlay them without help; Plex transcodes to burn them in when you turn them on. That is normal and only happens while subtitles are switched on.
+Asking for either **switches the output to MKV**, because MP4 cannot carry DVD or Blu-ray bitmap subtitles and cannot hold lossless audio. Plex and Roku both play MKV, so this costs you nothing.
+
+**No subtitle track is switched on by itself.** Pick one in the Plex player, or set a preferred subtitle language once in Plex's settings and it will apply across the library. The reason is in the next section.
 
 Default behaviour with no flags is unchanged: English audio, no subtitles, MP4.
+
+### Subtitles and the Roku
+
+No Roku can display the subtitles that come off a disc. They are images rather than text — PGS on Blu-ray, VobSub on DVD — and there is no bitmap subtitle renderer in any Roku model or firmware. Plex's only option is to burn them into the picture, which means re-encoding the video for the whole film instead of sending it across untouched.
+
+So a switched-on subtitle track costs you a transcode every time that film is played. That is worth it for a film you need to read, and not worth it for the rest, which is why none is marked default. Turning subtitles on in the player is the moment you choose to pay for it.
+
+The way out is text subtitles. An `.srt` sitting next to the film plays natively on a Roku with no transcoding, and Plex picks it up automatically if it is named like `Lady Snowblood (1973).eng.srt`. Getting one from a disc means OCR-ing the bitmaps — [Subtitle Edit](https://www.nikse.dk/subtitleedit) does this, as do `pgsrip` and `vobsub2srt`. Nothing here does it yet — there are notes on what it would take under **Notes for later: subtitles a Roku can actually draw**. In the meantime, downloading an `.srt` and dropping it beside the film works today.
+
+Run `./scripts/check-rip.sh` on anything you are unsure about. It reports, per file, whether a Roku can play it as-is or whether Plex will have to transcode, and it names the reason.
 
 ---
 
@@ -1046,6 +1058,42 @@ Worth knowing before any of it is attempted:
   Radarr needs the same Gatekeeper treatment as MakeMKV before it will open —
   `codesign --force --deep -s - /Applications/Radarr.app` and then
   `xattr -rd com.apple.quarantine` — and serves its interface on port 7878.
+
+---
+
+## Notes for later: subtitles a Roku can actually draw
+
+**Not built.** See **Subtitles and the Roku** above for why it matters: disc
+subtitles are images, no Roku renders them, and Plex transcodes the whole film
+to burn them in whenever one is switched on.
+
+The fix is to turn the bitmaps into text once, at rip time, instead of burning
+them into the picture on every playback. An OCR pass over the PGS or VobSub
+track produces an `.srt`, which every Roku draws natively and which costs
+nothing to carry.
+
+| | |
+|---|---|
+| [Subtitle Edit](https://www.nikse.dk/subtitleedit) | The usual tool. Has a command-line mode, but it is a .NET application and Windows-first |
+| [`pgsrip`](https://github.com/ratoaq2/pgsrip) | Python, purpose-built for PGS, wraps Tesseract. The closest fit to this pipeline |
+| [`vobsub2srt`](https://github.com/ruediger/VobSub2SRT) | DVD VobSub only. Older and less maintained, but small |
+
+Worth knowing before attempting it:
+
+- **OCR is not exact.** Subtitle OCR mangles italics, and confuses `I`/`l` and
+  `O`/`0` often enough to notice. The original bitmap tracks should stay in the
+  file alongside the generated `.srt` rather than being replaced by it, so a
+  bad line is a track switch rather than a re-rip.
+- **It would be its own pipeline stage**, running after HandBrake and before
+  delivery, and it needs the raw file, which is currently deleted once the
+  transcode finishes.
+- **Plex finds sidecar files by name.** `Lady Snowblood (1973).eng.srt` beside
+  `Lady Snowblood (1973).mkv` is picked up with no configuration, which means
+  this can be tried by hand on one film before any of it is automated.
+- **Downloading beats OCR when a subtitle exists.** For anything well known,
+  an existing `.srt` is better than one OCR'd here. Plex has a built-in
+  subtitle search, and Bazarr automates it across a library — which would
+  slot in beside Radarr and Sonarr in the notes above.
 
 ---
 

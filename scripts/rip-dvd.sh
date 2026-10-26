@@ -57,8 +57,8 @@ If you omit the name, the script reads the disc label and looks it up on Wikidat
                          reach the same quality in a slightly smaller file.
   --audio-langs LIST     Keep every audio track in these languages, e.g.
                          eng,spa. Forces an .mkv so surround audio survives.
-  --subtitle-langs LIST  Keep subtitles in these languages, switched off by
-                         default. Forces an .mkv.
+  --subtitle-langs LIST  Keep subtitles in these languages, none switched on
+                         by itself. Forces an .mkv.
   --keep-raw             Leave the MakeMKV .mkv files in ${RIPS_DIRECTORY}/raw
   --direct               Skip HandBrake. Copy decrypted MPEG-2 as .mkv
   --part N               This disc is part N of a film split over several

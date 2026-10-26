@@ -476,6 +476,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "room for the entire disc, so keep it for a disc that fails normally"
         ),
     )
+    rip_command.add_argument(
+        "--subtitles",
+        action="store_true",
+        dest="is_keeping_subtitles",
+        help=(
+            "Carry every subtitle track on the disc into the finished file, "
+            "for a film you cannot follow without them. None is switched on "
+            "by itself: pick one in Plex. Forces MKV over MP4"
+        ),
+    )
     disc_source.add_argument(
         "--from-image",
         type=Path,
@@ -594,6 +604,7 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
                 is_main_feature_only=arguments.is_main_feature_only,
                 is_rerip_allowed=arguments.is_rerip_allowed,
                 is_trying_harder=arguments.is_trying_harder,
+                is_keeping_subtitles=arguments.is_keeping_subtitles,
                 forced_media_kind=media_kind_asked_for(arguments),
                 forced_title=arguments.forced_title.strip(),
                 forced_season_number=arguments.forced_season_number,
