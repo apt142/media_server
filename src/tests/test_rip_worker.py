@@ -717,7 +717,7 @@ class MultiAngleDiscTests(RipWorkerTestCase):
 
 
 class RepeatedFeatureTests(unittest.TestCase):
-    """Repeats are matched on the exact second, which is what angles share."""
+    """Repeats match on the exact second and the exact byte, as angles do."""
 
     def _title(self, title_id: int, length_seconds: int, size_bytes: int) -> DiscTitle:
         return DiscTitle(
@@ -731,8 +731,14 @@ class RepeatedFeatureTests(unittest.TestCase):
 
         self.assertEqual([title.title_id for title in kept], [0])
 
-    def test_the_largest_copy_is_the_one_kept(self):
-        """Angles can differ slightly in size; the fuller one is worth having."""
+    def test_same_length_but_a_different_size_keeps_both(self):
+        """This used to keep the larger, which threw films away.
+
+        A commentary cut runs the film's exact length and is bigger for the
+        extra audio track, so "keep the largest" reliably kept the commentary
+        and dropped the film. Nothing in a scan tells the two apart, so the
+        sorting is left to whoever watches them.
+        """
         titles = [
             self._title(0, 7449, 7_000_000_000),
             self._title(1, 7449, 7_301_444_403),
@@ -740,7 +746,7 @@ class RepeatedFeatureTests(unittest.TestCase):
 
         kept = without_repeated_features(titles)
 
-        self.assertEqual([title.title_id for title in kept], [1])
+        self.assertEqual([title.title_id for title in kept], [0, 1])
 
     def test_titles_of_different_lengths_are_all_kept_in_disc_order(self):
         titles = [
@@ -769,6 +775,126 @@ class FolderNamingTests(unittest.TestCase):
         for disc_label, expected_name in cases:
             with self.subTest(disc_label=disc_label):
                 self.assertEqual(safe_file_component(disc_label), expected_name)
+
+
+class CommentaryCutTests(RipWorkerTestCase):
+    """A commentary cut runs the film's exact length, so both get ripped."""
+
+    def test_both_the_film_and_its_commentary_cut_are_taken(self):
+        """Nothing in a scan says which is which, so the choice is not made here."""
+        worker = self._worker(makemkv_fixtures.FILM_WITH_COMMENTARY_CUT)
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(len(outcome.ripped_files), 2)
+
+    def test_the_longer_file_does_not_displace_the_film(self):
+        """Keeping the larger of two same-length titles kept the commentary."""
+        worker = self._worker(makemkv_fixtures.FILM_WITH_COMMENTARY_CUT)
+
+        worker.rip_disc_in_drive()
+
+        self.assertEqual(self.fake_command.ripped_title_ids, [0, 1])
+
+    def test_a_title_matching_to_the_byte_is_still_only_taken_once(self):
+        """The multi-angle disc must keep working: it matches on size as well."""
+        worker = self._worker(makemkv_fixtures.MULTI_ANGLE_DVD)
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertEqual(len(outcome.ripped_files), 1)
+
+
+class UnfinishedCopyTests(RipWorkerTestCase):
+    """A copy MakeMKV calls "done" while missing files is not worth ripping."""
+
+    TRYING_HARDER = RipSettings(is_trying_harder=True)
+
+    def _rip_with_part_copied_disc(self):
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            settings=self.TRYING_HARDER,
+            copy_output=makemkv_fixtures.UNFINISHED_COPY_OUTPUT,
+        )
+        return worker.rip_disc_in_drive()
+
+    def test_nothing_is_ripped_out_of_a_copy_that_lost_a_file(self):
+        """The film is what goes missing, so what is left would pass for a disc."""
+        outcome = self._rip_with_part_copied_disc()
+
+        self.assertFalse(outcome.is_ripped)
+        self.assertIsNone(outcome.job_id)
+
+    def test_the_reason_names_the_missing_files_rather_than_the_copy_failing(self):
+        outcome = self._rip_with_part_copied_disc()
+
+        self.assertIn("missing files", outcome.message)
+        self.assertIn("rescue-disc.sh", outcome.message)
+
+    def test_the_part_copy_is_deleted_rather_than_left_to_be_found(self):
+        self._rip_with_part_copied_disc()
+
+        self.assertFalse(self.fake_command.copied_destinations[0].exists())
+
+    def test_a_copy_that_never_happened_is_not_described_as_part_copied(self):
+        """Both end the rip, but only one leaves something that looks usable.
+
+        A copy that failed outright also says "Failed to save title", so the
+        two read alike unless the difference is looked for deliberately.
+        """
+        worker = self._worker(
+            makemkv_fixtures.FILM_BLURAY,
+            settings=self.TRYING_HARDER,
+            is_copy_refused=True,
+            copy_output=makemkv_fixtures.DRIVE_DROPOUT_OUTPUT,
+        )
+
+        outcome = worker.rip_disc_in_drive()
+
+        self.assertIn("Could not copy the disc", outcome.message)
+        self.assertNotIn("missing files", outcome.message)
+
+
+class StaleStagingTests(RipWorkerTestCase):
+    """What an unfinished rip leaves behind must not reach the encoder.
+
+    Staging is named after the disc, so every attempt at one disc lands in the
+    same folder, and the encoder transcodes everything it finds there.
+    """
+
+    def _wreckage_no_job_knows_about(self) -> Path:
+        """Leave a truncated file behind with nothing recorded against it.
+
+        This is what a rip that died with the drive leaves: files on disk and
+        no job. --again cannot help, because clearing staging that way needs a
+        job to clear it for, and an attempt that never finished has none.
+        """
+        outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        staged_path = next((self.configuration.staging_root / "raw").iterdir())
+        truncated = staged_path / "title-04" / "Leftover_t04.mkv"
+        truncated.parent.mkdir(parents=True, exist_ok=True)
+        truncated.write_bytes(b"half a file from a drive that went away")
+        self.catalog.forget_job(outcome.job_id)
+        return truncated
+
+    def test_a_file_from_an_earlier_attempt_is_cleared_before_ripping(self):
+        truncated = self._wreckage_no_job_knows_about()
+
+        outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+
+        self.assertTrue(outcome.is_ripped)
+        self.assertFalse(truncated.exists())
+
+    def test_the_rip_that_just_happened_is_the_only_thing_staged(self):
+        """What the encoder transcodes is everything in the folder, not a list."""
+        self._wreckage_no_job_knows_about()
+
+        outcome = self._worker(makemkv_fixtures.FILM_BLURAY).rip_disc_in_drive()
+        staged_path = next((self.configuration.staging_root / "raw").iterdir())
+
+        self.assertEqual(
+            sorted(staged_path.rglob("*.mkv")), sorted(outcome.ripped_files)
+        )
 
 
 class RipFromImageTests(RipWorkerTestCase):

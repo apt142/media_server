@@ -263,6 +263,39 @@ MSG:5009,0,1,"Encountered 23 errors of type 'OS X IPC Error' - see http://www.ma
 MSG:5005,0,2,"Copy complete. 0 titles saved, 1 failed.","...","0","1"
 """
 
+# A film beside its director's commentary cut: the same runtime to the second,
+# and a larger file because of the extra audio track. This is the case that
+# must survive de-duplication, and the only thing separating it from the
+# multi-angle disc above is the size.
+FILM_WITH_COMMENTARY_CUT = """\
+MSG:1005,0,1,"MakeMKV v1.18.4 darwin(arm64-release) started","%1 started","MakeMKV v1.18.4"
+MSG:3025,0,0,"Title #1 was added (18 cell(s), 1:52:31)","...","..."
+MSG:3025,0,0,"Title #2 was added (18 cell(s), 1:52:31)","...","..."
+CINFO:2,0,"BLADE_RUNNER"
+TINFO:0,9,0,"1:52:31"
+TINFO:0,11,0,"24186548224"
+TINFO:0,27,0,"Blade Runner_t00.mkv"
+TINFO:1,9,0,"1:52:31"
+TINFO:1,11,0,"26903822336"
+TINFO:1,27,0,"Blade Runner_t01.mkv"
+TINFO:2,9,0,"0:08:14"
+TINFO:2,11,0,"901455872"
+TINFO:2,27,0,"Blade Runner_t02.mkv"
+"""
+
+# A whole-disc copy that lost one stream, from the Mad Max: Fury Road run.
+# The last line is the trap: MakeMKV says "Backup done", and the folder it
+# leaves behind looks like a disc. The stream it could not read belongs to the
+# main feature, so what the copy actually holds is the extras.
+UNFINISHED_COPY_OUTPUT = """\
+MSG:1005,0,1,"MakeMKV v1.18.4 darwin(arm64-release) started","%1 started","MakeMKV v1.18.4"
+MSG:5085,0,0,"Loaded content hash table, will verify integrity of M2TS files.","...","..."
+MSG:2004,0,2,"Error 'OS error - (ipc/send) invalid destination port' occurred while reading '/BDMV/STREAM/00109.m2ts' at offset '8049524736'","...","..."
+MSG:5003,0,2,"Failed to save title /BDMV/STREAM/00109.m2ts to file /Rips/disc-copies/BDMV/STREAM/00109.m2ts","...","..."
+MSG:5009,0,1,"Encountered 6 errors of type 'OS X IPC Error' - see http://www.makemkv.com/errors/ipc/","...","6"
+MSG:5006,0,2,"Backup done but 1 files failed hash check","...","1"
+"""
+
 # An expired key met at scan time rather than at decrypt time, recorded from a
 # real run. Nothing is listed and no title is attempted, so this is identical
 # to an empty drive apart from the one message saying what actually happened.

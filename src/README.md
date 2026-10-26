@@ -91,6 +91,14 @@ keeps the external drive from having to serve Plex, accept a rip, and feed a
 transcode at the same time — three things competing for the same disk heads
 will make playback stutter.
 
+A disc's folder under `Rips/raw` is named after the disc, so every attempt at
+one disc uses the same folder, and the rip empties it before writing. That is
+not tidiness: the encoder transcodes everything it finds in the folder rather
+than a list of files, so a truncated file left by a rip that died with the
+drive would be transcoded ahead of the rip that replaced it. Nothing else
+clears it, because `--again` clears staging by looking up the earlier job, and
+an attempt that never finished recorded none.
+
 ### 3. Check it
 
 ```sh
@@ -253,17 +261,35 @@ Taking both put A New Hope in the library three times. Because the copies land
 in one folder as `- part1`, `- part2` and `- part3`, Plex stacks them and plays
 them back to back, so the film appears to restart after the credits.
 
-Feature-length titles sharing a runtime **to the exact second** are now treated
-as one film and the largest copy is taken:
+Feature-length titles matching **to the exact second and the exact byte** are
+treated as one film, and the first is taken:
 
 ```
-2 titles run to exactly the same length and size, so the disc is offering the
-same film more than once. Taking it once.
+Skipping 2 title(s) that match another to the second and to the byte, so the
+disc is offering the same film more than once.
 ```
 
-The exact second is what keeps genuine double features intact. Two different
-films share a runtime only by coincidence, and never that precisely — the pair
-on one reissue disc run 1:12:04 and 1:12:40, and both are still taken.
+Both halves of that rule are load-bearing.
+
+The exact second keeps genuine double features intact. Two different films
+share a runtime only by coincidence, and never that precisely — the pair on one
+reissue disc run 1:12:04 and 1:12:40, and both are still taken.
+
+The exact byte keeps commentary cuts from eating the film. A commentary cut
+runs the feature's exact length and differs only in carrying another audio
+track, so it is the same length and a little larger:
+
+```
+TITLE  LENGTH     SIZE      SOURCE         FLAG   NAME
+0      1:52:31    22.5 GB                  -      Blade Runner_t00.mkv
+1      1:52:31    25.1 GB                  -      Blade Runner_t01.mkv
+```
+
+Matching on runtime alone collapsed those to one, and "keep the largest"
+then reliably kept the commentary and threw the film away. Nothing in a scan
+says which is which, so both are ripped and the choice is left to whoever
+watches them. An extra file is deleted in a second; a film nobody ripped is
+not missed until it is wanted.
 
 ### When a disc stops the drive part way through
 
@@ -298,6 +324,20 @@ If the copy itself cannot be made, that is reported rather than worked around:
 Could not copy the disc. The drive stopped answering part way through, rather
 than reporting a bad read.
 ```
+
+A copy that lost a file is refused rather than ripped from, because MakeMKV
+finishes one and calls it done:
+
+```
+Backup done but 1 files failed hash check
+```
+
+A disc's titles are assembled from its streams, so a copy missing one stream
+does not offer a shortened film — it does not offer that film at all. What is
+left is the extras, which look exactly like an ordinary disc. Taken at its
+word, Fury Road came out as a 28 minute special feature filed under the name
+and year of the film. `is_copy_unfinished` looks for MakeMKV saying "done" over
+the top of a file it lost, and stops there.
 
 At that point the drive has usually hung and wants unplugging. For a disc that
 will not survive even a copy, `scripts/rescue-disc.sh` images it in resumable

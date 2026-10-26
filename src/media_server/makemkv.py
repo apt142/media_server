@@ -291,11 +291,17 @@ class MakeMkv:
         result = self.run_command(
             ["-r", "--decrypt", "backup", DISC_ARGUMENT, str(destination)]
         )
+        messages = tuple(collapse_repeated_messages(parse_messages(result.output)))
         return BackupResult(
             # MakeMKV has been known to report success having written nothing,
-            # so the folder is asked rather than the exit code believed.
-            is_backed_up=result.is_successful and any(destination.iterdir()),
-            messages=tuple(collapse_repeated_messages(parse_messages(result.output))),
+            # so the folder is asked rather than the exit code believed. A
+            # part-copied disc is worse again: it looks like a whole one.
+            is_backed_up=(
+                result.is_successful
+                and any(destination.iterdir())
+                and not is_copy_unfinished(messages)
+            ),
+            messages=messages,
         )
 
     def rip_title(self, title_id: int, destination: Path) -> RipResult:
@@ -489,6 +495,27 @@ UNKNOWN_FAILURE = (
     "Its messages are above; an expired key, missing Java on a Blu-ray, or an "
     "unreadable disc are the usual causes."
 )
+
+
+# A copy that lost a file is still announced as "done", with the trouble
+# mentioned beside it rather than in place of it. Both of these say exactly
+# that, and neither appears when a copy fails outright: "failed to save title"
+# would, which is why it is not here. A copy that never happened is a different
+# problem with a different answer.
+UNFINISHED_COPY_SIGNS = ("failed hash check", "backup done but")
+
+
+def is_copy_unfinished(messages: Iterable[str]) -> bool:
+    """Whether MakeMKV said a copy was done over the top of a file it lost.
+
+    This matters more than it sounds. The titles on a disc are assembled from
+    its streams, so a copy missing one stream does not offer a shortened film:
+    it does not offer that film at all, and what is left looks like an ordinary
+    disc of extras. Taken at its word, the copy yields a special feature filed
+    under the title of the film.
+    """
+    spoken_messages = "\n".join(messages).lower()
+    return any(sign in spoken_messages for sign in UNFINISHED_COPY_SIGNS)
 
 
 def matching_failure_sign(messages: Iterable[str]) -> FailureSign | None:

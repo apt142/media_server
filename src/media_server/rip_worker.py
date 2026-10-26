@@ -26,12 +26,14 @@ from .file_names import safe_file_component
 from .job_catalog import Job, JobCatalog, JobState, RippedDisc
 from .film_lookup import FilmLookup
 from .makemkv import (
+    BackupResult,
     DiscScan,
     DiscTitle,
     MakeMkv,
     RipResult,
     explain_empty_scan,
     explain_failure,
+    is_copy_unfinished,
 )
 from .volume_space import space_at
 
@@ -100,24 +102,36 @@ class RipSettings:
         return self.minimum_feature_seconds // 60
 
 
+def copy_failure_message(backup: BackupResult) -> str:
+    """Say why a whole-disc copy is not worth ripping from."""
+    if is_copy_unfinished(backup.messages):
+        return (
+            "The copy is missing files the drive could not read, so the titles "
+            "in it are not the disc's titles: the main feature goes first, "
+            "leaving the extras behind looking like the whole disc. "
+            f"{explain_failure(backup.messages)}"
+        )
+    return f"Could not copy the disc. {explain_failure(backup.messages)}"
+
+
 def without_repeated_features(feature_titles: list[DiscTitle]) -> list[DiscTitle]:
-    """One title per distinct runtime, keeping the largest of any repeats.
+    """One title per distinct runtime and size, keeping the first of any repeats.
 
     A multi-angle DVD lists every angle as its own title, and from a scan they
-    are indistinguishable: the same runtime to the second and the same size.
-    Star Wars does exactly this, and taking both put the film on the shelf
-    twice at seven gigabytes a copy.
+    are indistinguishable: the same runtime to the second and the same size to
+    the byte. Star Wars does exactly this, and taking every angle put the film
+    on the shelf three times at seven gigabytes a copy.
 
-    Matching on the exact second is what keeps a genuine double feature
-    intact. Two different films share a runtime only by coincidence, and not
-    to the second: the pair on one reissue disc run 1:12:04 and 1:12:40.
+    Size has to match as well as runtime, because a commentary cut runs the
+    same length as the film and differs only in carrying another audio track.
+    Collapsing on runtime alone threw the film away and kept the commentary,
+    which is the one outcome worse than keeping both: an extra file is deleted
+    in a second, while a film nobody ripped is not missed until it is wanted.
     """
-    largest_by_length: dict[int, DiscTitle] = {}
+    first_of_each: dict[tuple[int, int], DiscTitle] = {}
     for title in feature_titles:
-        repeated = largest_by_length.get(title.length_seconds)
-        if repeated is None or title.size_bytes > repeated.size_bytes:
-            largest_by_length[title.length_seconds] = title
-    return sorted(largest_by_length.values(), key=lambda title: title.title_id)
+        first_of_each.setdefault((title.length_seconds, title.size_bytes), title)
+    return sorted(first_of_each.values(), key=lambda title: title.title_id)
 
 
 @dataclass
@@ -287,12 +301,7 @@ class RipWorker:
 
         if not backup.is_backed_up:
             shutil.rmtree(copy_path, ignore_errors=True)
-            return RipOutcome(
-                message=(
-                    "Could not copy the disc. "
-                    f"{explain_failure(backup.messages)}"
-                )
-            )
+            return RipOutcome(message=copy_failure_message(backup))
 
         try:
             reader = self.makemkv.reading_from(copy_path)
@@ -430,9 +439,9 @@ class RipWorker:
         repeat_count = len(feature_titles) - len(distinct_titles)
         if repeat_count:
             self.announce(
-                f"{repeat_count + 1} titles run to exactly the same length and "
-                "size, so the disc is offering the same film more than once. "
-                "Taking it once."
+                f"Skipping {repeat_count} title(s) that match another to the "
+                "second and to the byte, so the disc is offering the same film "
+                "more than once."
             )
         return distinct_titles
 
@@ -505,6 +514,15 @@ class RipWorker:
         reader: MakeMkv,
     ) -> RipOutcome:
         staged_path = self._staged_path_for(disc_scan)
+        # Staging is named after the disc, so every attempt at it lands here.
+        # A rip that died part way through leaves a truncated file behind, and
+        # the encoder takes everything it finds in this folder, so last time's
+        # wreckage would be transcoded ahead of this time's rip.
+        # Staging is named after the disc, so every attempt at it lands here.
+        # A rip that died part way through leaves a truncated file and no job
+        # to clean it up by, and the encoder takes everything it finds in this
+        # folder, so last time's wreckage would transcode ahead of this rip.
+        shutil.rmtree(staged_path, ignore_errors=True)
         attempt = self._rip_titles(titles_to_rip, staged_path, reader)
 
         if not attempt.ripped_files:

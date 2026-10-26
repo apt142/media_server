@@ -290,6 +290,7 @@ Everything below documents `scripts/`, which is where this project started. The 
 |---|---|
 | `setup.sh` | Installs Plex, HandBrake, MakeMKV, the `~/Media` tree, and SMB sharing |
 | `status.sh` | Checks the machine: tools installed, Plex running, share up, sleep settings |
+| `restart-plex.sh` | Stops Plex without corrupting its database, starts it again, waits until it answers |
 | `check-rip.sh` | Says whether a finished file will play on a Roku without transcoding |
 | `fix-rip.sh` | Repairs a rip that stalls partway through playback |
 | `join-parts.sh` | Merges `- part1` / `- part2` files into one film |
@@ -842,6 +843,28 @@ Keep it plugged in. A laptop used as a 24/7 server on battery will ruin the batt
 
 ## Troubleshooting
 
+**Plex needs restarting**
+
+Run this on the server, not on the Mac you sit at:
+
+```bash
+./scripts/restart-plex.sh
+```
+
+It asks Plex to quit, waits for it to go, starts it again, and does not claim
+success until the server answers on port 32400. The polite quit matters: Plex
+writes to a SQLite library database constantly, and killing it mid-write is how
+that database ends up corrupt. If Plex will not quit — usually because it is
+part way through a library scan — the script says so and stops rather than
+forcing it. `--force` kills it, once you have decided that is what you want.
+
+Run it on the wrong Mac and it tells you so instead of doing nothing quietly.
+
+**A new rip is not showing up in Plex** — restarting will not help. Nothing in
+this pipeline tells Plex when a file lands, so it finds new files on its own
+schedule. To make it look now, open the web interface, hover the library, and
+choose **Scan Library Files**.
+
 **Roku cannot see Plex**
 
 - Plex Media Server is running (`./scripts/status.sh`).
@@ -976,6 +999,53 @@ If you would rather click than run `scripts/setup.sh`, do this on the server Mac
 4. System Settings → General → Sharing → File Sharing on. Share `~/Media` as `Media`. Guest access off. Your user: Read & Write.
 5. System Settings → Battery → Options: prevent automatic sleeping on power adapter.
 6. Open Plex Media Server, then follow sections 2–6.
+
+---
+
+## Notes for later: a second way to fill the library
+
+**None of this is built or installed.** These are notes on tools that would sit
+alongside the ripping pipeline, not replace it. Writing them down so the links
+and the shape of the thing are not lost.
+
+Today there is one way into `~/Media`: a disc goes in the drive, `./media-server`
+rips and transcodes it, and the delivery step files it where Plex is already
+looking. The tools below are the other half of the usual home setup — a way to
+ask for something and have it arrive without a disc.
+
+| | | |
+|---|---|---|
+| Requesting | [Seerr](https://seerr.dev/) | The front door. People ask for a film or a series; it tracks what was asked for, what was approved, and what has already arrived |
+| Acquiring | [Radarr](https://radarr.video/) | Watches for a requested film to become available, picks a release matching the quality rules, and hands it to a downloader |
+| Downloading | [SABnzbd](https://sabnzbd.org/) | Usenet client. Takes the NZB Radarr gives it, fetches, repairs, unpacks, and drops the finished file |
+
+They chain in that order: Seerr takes the request and passes it to Radarr,
+Radarr finds a release and passes it to SABnzbd, SABnzbd downloads it and tells
+Radarr, and Radarr files it into the library. Seerr notices it has appeared
+because it polls Plex.
+
+Worth knowing before any of it is attempted:
+
+- **Seerr is not Overseerr or Jellyseerr**, though it replaces both. The two
+  projects merged; it supports Plex, Jellyfin and Emby from one codebase.
+  Anything written about the older two mostly applies, but the install
+  instructions do not.
+- **Radarr is films only.** Sonarr is the same program for television, and this
+  repo rips TV too, so a complete setup needs both. Seerr talks to either.
+- **They converge with this pipeline at the library, not before it.** Both would
+  write into `~/Media/Movies` and `~/Media/TV`, which Plex already watches and
+  the SMB share already exposes. Nothing about ripping would have to change.
+- **Naming is the one real collision.** Radarr renames what it files according
+  to its own template, while `RipWorker` names folders itself from the disc
+  label plus the year it looks up. Two things writing into one tree by
+  different rules will produce duplicates that Plex shows as separate films.
+  Whichever is adopted, one of them has to be taught the other's convention.
+- **All three expect to run as always-on services.** Radarr and SABnzbd both
+  ship native macOS apps and would sit under launchd like the rest of this
+  pipeline; Seerr is Docker-first, which would be the only new moving part.
+  Radarr needs the same Gatekeeper treatment as MakeMKV before it will open —
+  `codesign --force --deep -s - /Applications/Radarr.app` and then
+  `xattr -rd com.apple.quarantine` — and serves its interface on port 7878.
 
 ---
 
