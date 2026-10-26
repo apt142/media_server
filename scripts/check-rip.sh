@@ -52,14 +52,14 @@ check_one_file() {
   local file_path="$1"
   local ffprobe
   local streams
-  local video_codec video_level video_profile video_refs
+  local video_codec video_level video_profile video_refs video_width video_height
   local audio_codecs
   local subtitle_codecs
   local -a complaints=()
   ffprobe="$(ffprobe_command)"
 
   streams="$("$ffprobe" -v error -show_entries \
-    stream=codec_type,codec_name,profile,level,refs -of json "$file_path" 2>/dev/null || true)"
+    stream=codec_type,codec_name,profile,level,refs,width,height -of json "$file_path" 2>/dev/null || true)"
   if [[ -z "$streams" ]]; then
     print_error "${file_path}: ffprobe could not read this file"
     return 1
@@ -69,6 +69,8 @@ check_one_file() {
   video_profile="$(stream_field "$streams" video profile)"
   video_level="$(stream_field "$streams" video level)"
   video_refs="$(stream_field "$streams" video refs)"
+  video_width="$(stream_field "$streams" video width)"
+  video_height="$(stream_field "$streams" video height)"
   audio_codecs="$(stream_fields "$streams" audio codec_name)"
   subtitle_codecs="$(stream_fields "$streams" subtitle codec_name)"
 
@@ -80,10 +82,17 @@ check_one_file() {
     if [[ "$video_level" =~ ^[0-9]+$ && "$video_level" -gt "$ROKU_MAX_H264_LEVEL" ]]; then
       complaints+=("H.264 level $(describe_level "$video_level") is above the 4.2 a Roku allows")
     fi
-    # Level 4.0 and below permit 4 reference frames at 1080p. More than that is
-    # the usual reason a technically-valid file will not play.
-    if [[ "$video_refs" =~ ^[0-9]+$ && "$video_refs" -gt 4 ]]; then
-      complaints+=("${video_refs} reference frames, more than the 4 a Roku handles at 1080p")
+    # H.264 caps the decoded picture buffer by total macroblocks rather than by
+    # a flat count of frames, so how many reference frames a level allows
+    # depends on how big the frames are. Level 4.0 at 1080p permits 4; the same
+    # buffer at DVD size holds thirteen. Comparing everything against 4 failed
+    # every DVD for something no player objects to, which is worse than not
+    # checking: a false alarm here sends you re-ripping a disc that was fine.
+    local allowed_refs
+    allowed_refs="$(allowed_reference_frames "$video_level" "$video_width" "$video_height")"
+    if [[ "$video_refs" =~ ^[0-9]+$ && "$allowed_refs" =~ ^[0-9]+$ \
+          && "$video_refs" -gt "$allowed_refs" ]]; then
+      complaints+=("${video_refs} reference frames, more than the ${allowed_refs} that level $(describe_level "$video_level") allows at ${video_width}x${video_height}")
     fi
   fi
 
@@ -120,6 +129,37 @@ check_one_file() {
     printf '              - %s\n' "$complaint"
   done
   return 1
+}
+
+# The decoded picture buffer each H.264 level allows, in macroblocks. These are
+# the MaxDpbMbs figures from the spec's level table; ffprobe reports the level
+# as an integer, so 31 here is level 3.1.
+allowed_reference_frames() {
+  python3 -c '
+import math
+import sys
+
+MAX_DPB_MACROBLOCKS = {
+    10: 396, 11: 900, 12: 2376, 13: 2376,
+    20: 2376, 21: 4752, 22: 8100,
+    30: 8100, 31: 18000, 32: 20480,
+    40: 32768, 41: 32768, 42: 34816,
+    50: 110400, 51: 184320, 52: 184320,
+}
+
+try:
+    level, width, height = (int(value) for value in sys.argv[1:4])
+except ValueError:
+    sys.exit(0)
+
+buffer_size = MAX_DPB_MACROBLOCKS.get(level)
+if not buffer_size or width <= 0 or height <= 0:
+    sys.exit(0)
+
+macroblocks = math.ceil(width / 16) * math.ceil(height / 16)
+# H.264 never allows more than 16 regardless of how small the frames are.
+print(min(16, buffer_size // macroblocks))
+' "$1" "$2" "$3" 2>/dev/null
 }
 
 stream_field() {

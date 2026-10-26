@@ -547,10 +547,48 @@ carefully as a DVD. The plain `HQ 1080p30 Surround` preset is RF 20 on x264
 `slow`, against RF 16 `veryslow` for DVDs — which encodes the *higher* quality
 source less carefully than the lower quality one.
 
-The speed preset is `slow` rather than the preset's own `veryslow`. RF is the
+A Blu-ray gets `slow` rather than the preset's own `veryslow`. RF is the
 quality target; the speed preset only decides how long x264 spends hitting it
-in fewer bits. On this hardware `veryslow` costs five to seven hours per
-Blu-ray against two to three for `slow`, for roughly 5–10% less file size.
+in fewer bits, so it buys a smaller file rather than a better picture. On this
+hardware `veryslow` costs five to seven hours per Blu-ray against two to three
+for `slow`, for roughly 5–10% less file size. A DVD is a sixth of the pixels
+and nowhere near those hours, so it keeps `veryslow`.
+
+DVDs are also encoded at RF 13 rather than the preset's 16, and with x264's
+`film` tune. A whole DVD is a few gigabytes, so the size a few RF steps costs
+is not the constraint it is on a Blu-ray, and the `film` tune eases off the
+deblocking filter that otherwise reads grain as compression noise and smooths
+it away. Blu-ray is left on its preset's own figures; they have not been looked
+at the way these have.
+
+### Why DVDs are detelecined
+
+This is the one that was actually wrong, rather than merely conservative.
+
+An NTSC DVD of a film is not 30fps video. It is 23.976fps film with 3:2
+pulldown laid over it to reach 29.97, which leaves two frames in every five
+holding fields from two *different* film frames. The preset turns on comb
+detection and `decomb`, but ships with detelecine off, so those frames were
+read as interlacing and handed to decomb — which interpolates a new picture.
+Roughly 40% of the frames in every DVD rip were invented, standing in for
+original frames that were sitting on the disc the whole time.
+
+`--detelecine` reverses the pulldown and recovers the film frames themselves.
+It runs ahead of decomb in the filter chain, so by the time comb detection
+looks there is nothing left to find.
+
+HandBrake's note on the filter is that it drops the duplicated frames to get
+back to 23.976 *"unless you specify a constant framerate"*, which `--cfr` does.
+So the output stays 30fps and the duplicates stay in. They cost almost nothing
+to encode — a duplicate frame is a few skip blocks — and the frames that are
+left are the real ones.
+
+A DVD that is genuinely 30fps video rather than telecined film has no pulldown
+pattern to find, so this does nothing to it and decomb still handles it the way
+it did. That is why it is on for every DVD rather than only for films: there is
+no case where it makes things worse, so nothing has to guess which kind of disc
+it is looking at. Blu-ray is already progressive and already at the film's own
+rate, so it is left alone.
 
 Profile and level are pinned explicitly rather than left to the preset. The
 Roku decodes H.264 in hardware and refuses anything past High profile at level

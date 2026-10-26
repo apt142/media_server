@@ -584,7 +584,9 @@ Knives Out (2019).mp4
   verdict     plays directly on a Roku
 ```
 
-A Roku decodes H.264 in hardware and is strict about it: High profile, level 4.2 at most, and no more than 4 reference frames at 1080p. Exceed any of those and it hands the file back to Plex. The rippers now pin profile and level explicitly (`high`, level 4.0 for Blu-ray and 3.1 for DVD) so this cannot drift, but the checker is the way to confirm what you already have on disk.
+A Roku decodes H.264 in hardware and is strict about it: High profile and level 4.2 at most. Exceed either and it hands the file back to Plex. The rippers pin profile and level explicitly (`high`, level 4.0 for Blu-ray and 3.1 for DVD) so this cannot drift, but the checker is the way to confirm what you already have on disk.
+
+Reference frames are checked against what the level actually permits, which depends on frame size: H.264 caps the decode buffer by total macroblocks rather than by a count of frames, so level 4.0 allows 4 at 1080p and level 3.1 allows 13 at DVD size. A flat limit of 4 would fail every DVD for something no player objects to. Note that some builds of `ffprobe` do not report reference frames at all, in which case the line reads `? ref frames` and that check is simply skipped.
 
 Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD) and image-based subtitles (PGS, VOBSUB) both force Plex to transcode, and both only appear if you asked for them with `--audio-langs` or `--subtitle-langs`. If a Roku is your main player, plain `./scripts/rip.sh` avoids both.
 

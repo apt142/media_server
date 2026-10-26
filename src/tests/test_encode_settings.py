@@ -95,6 +95,65 @@ class CommandArgumentTests(unittest.TestCase):
         self.assertNotIn("--quality", without_override)
         self.assertEqual(with_override[with_override.index("--quality") + 1], "18")
 
+    def test_an_override_beats_the_quality_a_dvd_would_otherwise_get(self):
+        settings = EncodeSettings(disc_format="dvd", quality_override="20")
+
+        arguments = settings.command_arguments(self.SOURCE_FILE, self.OUTPUT_FILE)
+
+        self.assertEqual(arguments[arguments.index("--quality") + 1], "20")
+
+
+class DvdPictureTests(unittest.TestCase):
+    """A DVD is a small, awkward source and gets treated as one."""
+
+    SOURCE_FILE = Path("/staging/raw/title-00/title_t00.mkv")
+    OUTPUT_FILE = Path("/staging/encoded/job-00001/The Matrix (1999).mp4")
+
+    def _arguments_for(self, disc_format: str) -> list[str]:
+        return EncodeSettings(disc_format=disc_format).command_arguments(
+            self.SOURCE_FILE, self.OUTPUT_FILE
+        )
+
+    def test_a_dvd_is_detelecined_so_film_frames_are_recovered_not_guessed(self):
+        """Without this, decomb interpolates two frames in every five.
+
+        An NTSC DVD of a film is 23.976fps with 3:2 pulldown over it. The
+        preset reads the mixed frames as interlacing and has decomb invent a
+        picture, when the original frame is still on the disc.
+        """
+        self.assertIn("--detelecine", self._arguments_for("dvd"))
+
+    def test_a_bluray_is_left_alone(self):
+        """Blu-ray video is already progressive and already the film's rate."""
+        arguments = self._arguments_for("bluray")
+
+        self.assertNotIn("--detelecine", arguments)
+        self.assertNotIn("--encoder-tune", arguments)
+        self.assertNotIn("--quality", arguments)
+
+    def test_a_dvd_aims_at_a_higher_quality_than_its_preset_asks_for(self):
+        arguments = self._arguments_for("dvd")
+
+        self.assertEqual(arguments[arguments.index("--quality") + 1], "13")
+
+    def test_a_dvd_keeps_grain_rather_than_deblocking_it_away(self):
+        arguments = self._arguments_for("dvd")
+
+        self.assertEqual(arguments[arguments.index("--encoder-tune") + 1], "film")
+
+    def test_a_dvd_is_encoded_as_slowly_as_its_preset_wants(self):
+        """Speed buys file size, not picture, and a DVD is cheap to encode.
+
+        The Blu-ray case is the one that cannot afford veryslow: 5-7 hours
+        against 2-3, for 5-10% of file size.
+        """
+        self.assertEqual(self._encoder_speed_for("dvd"), "veryslow")
+        self.assertEqual(self._encoder_speed_for("bluray"), "slow")
+
+    def _encoder_speed_for(self, disc_format: str) -> str:
+        arguments = self._arguments_for(disc_format)
+        return arguments[arguments.index("--encoder-preset") + 1]
+
     def test_every_subtitle_track_is_taken_whatever_its_language(self):
         """No language list is how HandBrake is told to take any language.
 

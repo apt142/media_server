@@ -152,17 +152,29 @@ BLURAY_HANDBRAKE_PRESET="Super HQ 1080p30 Surround"
 HANDBRAKE_PRESET=""
 
 # Empty means "whatever the preset says" (RF 16 for DVD, RF 18 for Blu-ray).
-# Lower is better quality and a bigger file.
+# Lower is better quality and a bigger file. Set per format below.
 VIDEO_QUALITY_OVERRIDE=""
+
+# RF, the constant quality target. A DVD is a few gigabytes whole, so the size
+# a step down costs is not the constraint it is on a Blu-ray, and the preset's
+# 16 leaves detail on the disc. Blu-ray is left on its preset's own.
+DVD_VIDEO_QUALITY="13"
+
+# x264's "film" tune eases off the deblocking filter, which otherwise reads
+# grain and fine texture as compression noise and smooths it away.
+DVD_ENCODER_TUNE="film"
+ENCODER_TUNE=""
 
 # How hard x264 works, which is a separate thing from how good the result looks.
 # RF is the quality target; this only decides how long x264 spends finding ways
-# to hit it in fewer bits.
+# to hit it in fewer bits, so it buys a smaller file rather than a better one.
 #
 # Both Super HQ presets ask for "veryslow", which on an 8-core M1 Pro means 5-7
 # hours for a Blu-ray. "slow" hits the same RF in 2-3 hours for roughly 5-10%
-# more file size, so it is the better default on this hardware. Ask for
-# "veryslow" explicitly if you would rather have the smaller file.
+# more file size, which is the better trade at that size. A DVD is a sixth of
+# the pixels and nowhere near those hours, so it gets the preset's answer back.
+BLURAY_ENCODER_SPEED="slow"
+DVD_ENCODER_SPEED="veryslow"
 ENCODER_SPEED="slow"
 
 # Roku decodes H.264 in hardware and is strict about it: High profile, level 4.0
@@ -260,12 +272,16 @@ choose_handbrake_preset() {
   if [[ "$media_type" == *[Bb]lu-ray* ]]; then
     HANDBRAKE_RATE_FLAG="--pfr"
     ENCODER_LEVEL="$BLURAY_ENCODER_LEVEL"
+    ENCODER_SPEED="$BLURAY_ENCODER_SPEED"
     HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$BLURAY_HANDBRAKE_PRESET}"
     print_step "Blu-ray detected, encoding with \"${HANDBRAKE_PRESET}\""
     print_line "Leave about 30 GB free for the raw rip. The encode takes hours, not minutes."
   else
     HANDBRAKE_RATE_FLAG="--cfr"
     ENCODER_LEVEL="$DVD_ENCODER_LEVEL"
+    ENCODER_SPEED="$DVD_ENCODER_SPEED"
+    ENCODER_TUNE="$DVD_ENCODER_TUNE"
+    VIDEO_QUALITY_OVERRIDE="${VIDEO_QUALITY_OVERRIDE:-$DVD_VIDEO_QUALITY}"
     HANDBRAKE_PRESET="${HANDBRAKE_PRESET:-$DVD_HANDBRAKE_PRESET}"
     print_step "DVD detected, encoding with \"${HANDBRAKE_PRESET}\""
   fi
@@ -411,6 +427,24 @@ handbrake_video_flags() {
   if [[ -n "$ENCODER_SPEED" ]]; then
     printf '%s\n' "--encoder-preset" "$ENCODER_SPEED"
   fi
+  if [[ -n "$ENCODER_TUNE" ]]; then
+    printf '%s\n' "--encoder-tune" "$ENCODER_TUNE"
+  fi
+}
+
+handbrake_filter_flags() {
+  # An NTSC DVD of a film is 23.976fps film with 3:2 pulldown over it, so two
+  # frames in five hold fields from two different film frames. The preset reads
+  # those as interlacing and has decomb interpolate a new picture, standing in
+  # for an original frame that is still on the disc. Detelecine reverses the
+  # pulldown and recovers the real frames instead, ahead of decomb in the chain.
+  #
+  # It would drop the duplicates back to 23.976, but --cfr keeps the rate at 30
+  # and the duplicates with it, which cost almost nothing to encode. A DVD that
+  # is really 30fps video has no pattern to find, so this leaves it alone.
+  if [[ "$HANDBRAKE_RATE_FLAG" == "--cfr" ]]; then
+    printf '%s\n' "--detelecine"
+  fi
 }
 
 handbrake_track_flags() {
@@ -439,7 +473,8 @@ convert_title() {
 
   while IFS= read -r flag; do
     extra_flags+=("$flag")
-  done < <(handbrake_container_flags; handbrake_video_flags; handbrake_track_flags)
+  done < <(handbrake_container_flags; handbrake_video_flags; \
+    handbrake_filter_flags; handbrake_track_flags)
 
   mkdir -p "$(dirname "$output_file")"
   set +e

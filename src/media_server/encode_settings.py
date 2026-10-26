@@ -19,12 +19,30 @@ BLURAY_PRESET = "Super HQ 1080p30 Surround"
 
 # How hard x264 works, which is a separate thing from how good the result
 # looks. RF is the quality target; this only decides how long x264 spends
-# finding ways to hit it in fewer bits.
+# finding ways to hit it in fewer bits, so it buys a smaller file rather than
+# a better picture.
 #
 # Both Super HQ presets ask for "veryslow", which on an 8-core M1 Pro means 5-7
 # hours for a Blu-ray. "slow" hits the same RF in 2-3 hours for roughly 5-10%
-# more file size, so it is the better default on this hardware.
-ENCODER_SPEED = "slow"
+# more file size, which is the better trade at that size. A DVD is a sixth of
+# the pixels and nowhere near those hours, so it gets the preset's answer back.
+BLURAY_ENCODER_SPEED = "slow"
+DVD_ENCODER_SPEED = "veryslow"
+
+# RF, the constant quality target: lower keeps more of the source and costs
+# file size. The Super HQ 480p preset asks for 16, which is conservative for a
+# source this small -- a whole DVD is a few gigabytes, so the size a step down
+# costs is not the constraint it is on a Blu-ray.
+#
+# Blu-ray is left on whatever its preset asks for. Nothing is said about it
+# here because it has not been looked at the way this has.
+DVD_QUALITY = "13"
+
+# x264's "film" tune eases off the deblocking filter, which otherwise reads
+# grain and fine texture as compression noise and smooths it away. A DVD of a
+# live-action film has grain in it worth keeping; the alternative, "grain",
+# keeps more still and costs far more size than the detail is worth here.
+DVD_ENCODER_TUNE = "film"
 
 # Roku decodes H.264 in hardware and is strict about it: High profile, level
 # 4.0 at 1080p and 3.1 at 480p. Go past that -- most easily by letting x264
@@ -43,6 +61,25 @@ BLURAY_ENCODER_LEVEL = "4.0"
 # would only duplicate frames on a 24fps film.
 DVD_RATE_FLAG = "--cfr"
 BLURAY_RATE_FLAG = "--pfr"
+
+# An NTSC DVD of a film is not 30fps video. It is 23.976fps film with 3:2
+# pulldown laid over it to reach 29.97, which leaves two frames in every five
+# holding fields from two different film frames. The preset spots those as
+# interlacing and hands them to decomb, which interpolates a new picture --
+# a guess, standing in for an original frame that is still on the disc.
+#
+# Detelecine reverses the pulldown instead and recovers the film frames
+# themselves. It runs ahead of decomb in the filter chain, so by the time comb
+# detection looks there is nothing left to find.
+#
+# HandBrake's note on this filter: it drops the duplicated frames to get back
+# to 23.976 "unless you specify a constant framerate", which --cfr does. So the
+# output stays 30fps and the duplicates stay in, costing almost nothing to
+# encode, and the frames that are left are the real ones.
+#
+# A DVD that is genuinely 30fps video rather than telecined film has no pulldown
+# pattern to find, so this does nothing to it and decomb still handles it.
+DETELECINE_FLAG = "--detelecine"
 
 # Lossless Blu-ray audio only fits in MKV, and only survives if "copy" is
 # allowed to pass these through rather than re-encoding them.
@@ -73,7 +110,6 @@ class EncodeSettings:
     audio_languages: str = ""
     is_keeping_subtitles: bool = False
     quality_override: str = ""
-    encoder_speed: str = ENCODER_SPEED
 
     @property
     def is_bluray(self) -> bool:
@@ -96,6 +132,27 @@ class EncodeSettings:
         if self.is_bluray:
             return BLURAY_RATE_FLAG
         return DVD_RATE_FLAG
+
+    @property
+    def encoder_speed(self) -> str:
+        if self.is_bluray:
+            return BLURAY_ENCODER_SPEED
+        return DVD_ENCODER_SPEED
+
+    @property
+    def quality(self) -> str:
+        """The RF to aim at, or nothing to leave the preset's own alone."""
+        if self.quality_override:
+            return self.quality_override
+        if self.is_bluray:
+            return ""
+        return DVD_QUALITY
+
+    @property
+    def encoder_tune(self) -> str:
+        if self.is_bluray:
+            return ""
+        return DVD_ENCODER_TUNE
 
     @property
     def is_keeping_extra_tracks(self) -> bool:
@@ -124,6 +181,7 @@ class EncodeSettings:
             self.rate_flag,
             *self._container_arguments(),
             *self._video_arguments(),
+            *self._filter_arguments(),
             *self._track_arguments(),
         ]
 
@@ -141,11 +199,19 @@ class EncodeSettings:
             "--encoder-level",
             self.encoder_level,
         ]
-        if self.quality_override:
-            arguments += ["--quality", self.quality_override]
+        if self.quality:
+            arguments += ["--quality", self.quality]
         if self.encoder_speed:
             arguments += ["--encoder-preset", self.encoder_speed]
+        if self.encoder_tune:
+            arguments += ["--encoder-tune", self.encoder_tune]
         return arguments
+
+    def _filter_arguments(self) -> list[str]:
+        """Picture filters beyond what the preset already turns on."""
+        if self.is_bluray:
+            return []
+        return [DETELECINE_FLAG]
 
     def _track_arguments(self) -> list[str]:
         arguments = []
