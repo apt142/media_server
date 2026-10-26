@@ -441,11 +441,19 @@ Anything not on this list falls back to pointing at the raw messages. Guessing
 at wording MakeMKV might use would mean confidently naming the wrong cause,
 which sends you off fixing something that was never broken.
 
-### Subtitles are asked for at rip time and remembered
+### Subtitles are decided at rip time and remembered
 
 ```sh
-./media-server rip --subtitles
+./media-server rip                  # keeps every subtitle track
+./media-server rip --no-subtitles   # drops them, allows MP4
 ```
+
+Keeping them is the default, which makes the asymmetry the point: a rip that
+skipped the subtitles needs the disc back in the drive, while a rip that took
+them costs a few megabytes per track and nothing at playback, because none of
+them is switched on. `RipSettings.is_keeping_subtitles` carries that default;
+`RippedDisc` and the column still default to off, so the policy lives at the
+edge and storage stays neutral about it.
 
 The subtitles are HandBrake's business, but the flag is on `rip`, because the
 decision belongs to the disc and the disc is gone by the time the encoder gets
@@ -458,6 +466,12 @@ back off the job rather than being configured once for everything.
 serves as the fallback for a job that asked for nothing. That parameter had
 been there all along with nothing ever passing it, which is why no disc had
 ever come out with subtitles despite MakeMKV keeping every track.
+
+A job recorded before the column existed reads as off and is transcoded that
+way, defaults notwithstanding. The job is the record of what was asked for, and
+rewriting it to match a default chosen afterwards would make it something else.
+Anything already sitting in the queue therefore keeps the old answer; only
+re-ripping changes it.
 
 The flag takes no languages. `--all-subtitles` matches any language when it is
 given no `--subtitle-lang-list` to narrow it, so every track on the disc comes

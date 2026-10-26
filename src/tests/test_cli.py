@@ -522,30 +522,34 @@ class RipCommandTests(CommandLineTestCase):
         with self.assertRaises(SystemExit):
             self._run_command("rip", "--try-harder", "--from-image", "/tmp/x.iso")
 
-    def test_subtitles_asked_for_are_written_down_against_the_job(self):
-        """The transcode happens later, so the disc cannot be asked again."""
-        self._write_configuration_file()
+    def _subtitle_answer_recorded_by(self, command: str) -> bool:
+        """What the job remembers about subtitles after running `command`.
 
-        self._run_with_disc("rip --subtitles", makemkv_fixtures.FILM_BLURAY)
+        The transcode happens later, so this is the only record of what was
+        asked for: by then the disc is out and cannot be asked again.
+        """
+        self._write_configuration_file()
+        self._run_with_disc(command, makemkv_fixtures.FILM_BLURAY)
 
         configuration = Configuration(
             staging_root=self.staging_root, library_root=self.library_root
         )
         with JobCatalog(configuration.catalog_path) as catalog:
-            job = catalog.job_with_id(1)
-        self.assertTrue(job.is_keeping_subtitles)
+            return catalog.job_with_id(1).is_keeping_subtitles
 
-    def test_a_rip_without_the_flag_asks_for_no_subtitles(self):
-        self._write_configuration_file()
+    def test_a_plain_rip_keeps_the_subtitles(self):
+        """A disc is only in the drive once, so the default takes them.
 
-        self._run_with_disc("rip", makemkv_fixtures.FILM_BLURAY)
+        Ripping without them and wanting them later means finding the disc
+        again; taking them costs a few megabytes nobody has to look at.
+        """
+        self.assertTrue(self._subtitle_answer_recorded_by("rip"))
 
-        configuration = Configuration(
-            staging_root=self.staging_root, library_root=self.library_root
-        )
-        with JobCatalog(configuration.catalog_path) as catalog:
-            job = catalog.job_with_id(1)
-        self.assertFalse(job.is_keeping_subtitles)
+    def test_asking_for_subtitles_outright_is_still_allowed(self):
+        self.assertTrue(self._subtitle_answer_recorded_by("rip --subtitles"))
+
+    def test_they_can_be_turned_off_for_a_disc_that_does_not_want_them(self):
+        self.assertFalse(self._subtitle_answer_recorded_by("rip --no-subtitles"))
 
 
 class EncodeCommandTests(CommandLineTestCase):

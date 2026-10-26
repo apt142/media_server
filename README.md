@@ -596,23 +596,23 @@ Two things it flags that are working as intended: lossless audio (TrueHD, DTS-HD
 
 **This needs `./scripts/setup.sh` to have run at least once since this feature was added.** MakeMKV's stock rule is `-sel:all,+sel:(favlang|nolang|single),...`, which discards tracks that are not in your favourite language *during the rip*. Those tracks never reach HandBrake, so no flag can bring them back. Setup now sets `app_DefaultSelectionString = "+sel:all"` so everything survives the rip and the ripper can choose. Check with `./scripts/status.sh`, under **MakeMKV track selection**.
 
-Then ask for what you want, per disc:
+**`./media-server rip` keeps every subtitle track on the disc by default.** You do not have to ask. A disc is only in the drive once, and a rip that skipped the subtitles has to go back in the drive to get them, while keeping them costs a few megabytes per track and nothing at playback.
 
 ```bash
-./media-server rip --subtitles              # a film you cannot follow without them
+./media-server rip                          # keeps all subtitles
+./media-server rip --no-subtitles           # drops them, allows MP4
 ./scripts/rip.sh --audio-langs eng,spa
-./scripts/rip.sh --audio-langs eng,fra --subtitle-langs eng,fra
 ```
 
-Audio languages are three-letter codes: `eng`, `spa`, `fra`, `deu`, `jpn`. `--subtitles` takes none — it keeps **every** subtitle track on the disc. Guessing at languages means a second trip through the drive when the guess is wrong, and the generous version costs a few megabytes.
+`--subtitles` takes no languages. Guessing at which ones a disc carries means a second trip through the drive when the guess is wrong, so it takes all of them.
 
-Ask per disc rather than setting it once. Subtitles are for the films you cannot follow without them, and on everything else they are tracks nobody plays in a container you did not need.
-
-Asking for either **switches the output to MKV**, because MP4 cannot carry DVD or Blu-ray bitmap subtitles and cannot hold lossless audio. Plex and Roku both play MKV, so this costs you nothing.
+Keeping them **switches the output to MKV**, because MP4 cannot carry DVD or Blu-ray bitmap subtitles. Since this is now the default, essentially everything comes out as MKV. Plex and Roku both play it, so this costs you nothing; `--no-subtitles` is there for when you want an MP4 anyway.
 
 **No subtitle track is switched on by itself.** Pick one in the Plex player, or set a preferred subtitle language once in Plex's settings and it will apply across the library. The reason is in the next section.
 
-Default behaviour with no flags is unchanged: English audio, no subtitles, MP4.
+Audio is separate and still opt-in, on the shell rippers only: `--audio-langs eng,spa` with three-letter codes. Asking for extra audio also forces MKV, because MP4 cannot hold lossless tracks. With no audio flags you get English audio.
+
+> The older `scripts/rip*.sh` rippers still take `--subtitle-langs LIST` and still default to no subtitles. They filter to the languages you name rather than taking everything.
 
 ### Subtitles and the Roku
 

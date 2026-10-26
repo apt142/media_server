@@ -478,12 +478,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     rip_command.add_argument(
         "--subtitles",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        # Taken from RipSettings rather than repeated, so the flag and the
+        # setting it fills in cannot drift into disagreeing about the default.
+        default=RipSettings.is_keeping_subtitles,
         dest="is_keeping_subtitles",
         help=(
-            "Carry every subtitle track on the disc into the finished file, "
-            "for a film you cannot follow without them. None is switched on "
-            "by itself: pick one in Plex. Forces MKV over MP4"
+            "Carry every subtitle track on the disc into the finished file. On "
+            "by default, with none switched on for playback: pick one in Plex "
+            "when you want it. --no-subtitles drops them and allows MP4"
         ),
     )
     disc_source.add_argument(

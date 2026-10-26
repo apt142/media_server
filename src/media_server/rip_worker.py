@@ -93,10 +93,11 @@ class RipSettings:
     # rather than assumed.
     is_trying_harder: bool = False
 
-    # Whether the finished file should carry the disc's subtitles. Asked for
-    # per disc rather than set once, because carrying subtitles means an MKV
-    # rather than an MP4, and most discs have no need of either.
-    is_keeping_subtitles: bool = False
+    # Whether the finished file should carry the disc's subtitles. On by
+    # default: the disc is only in the drive once, and a disc ripped without
+    # them has to go back in to get them. They cost a few megabytes a track and
+    # nothing at playback, since none of them is switched on.
+    is_keeping_subtitles: bool = True
 
     @property
     def is_media_kind_forced(self) -> bool:
