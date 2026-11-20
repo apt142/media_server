@@ -90,7 +90,16 @@ MakeMKV is free while it is in beta. The author posts a key that lasts about 60 
 4. Menu bar: **Help → Register**.
 5. Paste the key. Click **OK**.
 
-When the key expires, MakeMKV will refuse to rip. Come back to that same forum thread, copy the new key, and paste it again. A [paid license](https://www.makemkv.com/) skips this rotation.
+The key rotates roughly every two months, and when it lapses MakeMKV refuses to rip — but what you see is a failed rip rather than anything about registration. You do not have to watch for it:
+
+```bash
+./scripts/refresh-makemkv-key.sh    # fetch the current key and register it
+./media-server status               # shows the key and the expiry it last heard
+```
+
+The encoder also tops it up on its own, at most twice a day, so by the time you put a disc in the key is usually already current. A [paid license](https://www.makemkv.com/) skips the rotation entirely.
+
+Quit MakeMKV before refreshing. It rewrites its settings file from memory when it exits, so an edit made while it is open gets undone — the script checks for this and says so rather than writing something that will not survive.
 
 You also need macOS to let MakeMKV see the USB drive. Do that in the next section.
 
@@ -291,6 +300,7 @@ Everything below documents `scripts/`, which is where this project started. The 
 | `setup.sh` | Installs Plex, HandBrake, MakeMKV, the `~/Media` tree, and SMB sharing |
 | `status.sh` | Checks the machine: tools installed, Plex running, share up, sleep settings |
 | `restart-plex.sh` | Stops Plex without corrupting its database, starts it again, waits until it answers |
+| `refresh-makemkv-key.sh` | Fetches MakeMKV's current beta key and registers it |
 | `check-rip.sh` | Says whether a finished file will play on a Roku without transcoding |
 | `fix-rip.sh` | Repairs a rip that stalls partway through playback |
 | `join-parts.sh` | Merges `- part1` / `- part2` files into one film |

@@ -14,6 +14,7 @@ from .configuration import (
 from .disc_classifier import DiscClassifier
 from .disc_watcher import DiscWatcher, WatchSettings
 from .encode_service import EncodeService
+from .makemkv_key import STAMP_FILE_NAME, MakeMkvRegistration
 from .encode_worker import EncodeWorker, is_handbrake_installed
 from .job_catalog import (
     FILM_MEDIA_KIND,
@@ -95,6 +96,8 @@ class PipelineCommands:
         """Print the folders, the disk space on each, and the queue depth."""
         self._print_folders()
         print()
+        self._print_registration()
+        print()
         if not self.has_catalog:
             print("Nothing has been ripped yet.")
             return 0
@@ -103,6 +106,43 @@ class PipelineCommands:
         print()
         self._print_queue()
         return 0
+
+    def _print_registration(self) -> None:
+        """What MakeMKV is registered with, answered without asking the forum.
+
+        An expired key stops rips without saying so clearly, so it is worth a
+        line here rather than being found out mid-disc.
+        """
+        print("MakeMKV key")
+        for line in self._registration().describe():
+            print(line)
+
+    def _registration(self) -> MakeMkvRegistration:
+        return MakeMkvRegistration(
+            stamp_file=self.configuration.staging_root / STAMP_FILE_NAME
+        )
+
+    def refresh_makemkv_key(self) -> int:
+        """Fetch the current beta key and register it if it is new."""
+        print(self._registration().refresh().message)
+        return 0
+
+    def _renew_makemkv_key(self) -> None:
+        """Top the key up on the way into a transcode.
+
+        Transcoding does not use MakeMKV at all, which makes this a strange
+        place to look until you ask when else anything runs. Ripping is the
+        one thing that cannot do it: by then the disc is in the drive and a
+        lapsed key has already turned into a failed rip. The encoder runs
+        often, runs unattended, and has hours to spare, so it is the one that
+        notices in time for the next disc rather than after it.
+
+        Throttled and silent when there is nothing to say, because this is not
+        what the operator ran the command to find out.
+        """
+        outcome = self._registration().refresh_if_due()
+        if outcome is not None and outcome.is_installed:
+            print(outcome.message)
 
     def _print_folders(self) -> None:
         staging_space = space_at(self.configuration.staging_root)
@@ -282,6 +322,7 @@ class PipelineCommands:
         if not is_handbrake_installed():
             print(HANDBRAKE_MISSING_MESSAGE)
             return 1
+        self._renew_makemkv_key()
         if not self.has_catalog:
             print("Nothing has been ripped yet.")
             return 0
@@ -318,7 +359,14 @@ class PipelineCommands:
             print(HANDBRAKE_MISSING_MESSAGE)
             return 1
 
-        service = EncodeService(self.configuration, self.catalog)
+        # This is the long-running one: started at login and left alone for
+        # weeks, which is longer than a beta key lasts. Checking only here at
+        # the top would mean a service that started with a good key and ripped
+        # nothing months later, so the service re-checks as it goes round.
+        self._renew_makemkv_key()
+        service = EncodeService(
+            self.configuration, self.catalog, before_each_pass=self._renew_makemkv_key
+        )
         return run_until_interrupted(service.serve_forever)
 
     def deliver_waiting_jobs(self) -> int:
@@ -565,6 +613,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("deliver", help="Move finished files to the library drive")
     subcommands.add_parser("config", help="Show the resolved folders")
     subcommands.add_parser(
+        "refresh-key", help="Fetch MakeMKV's current beta key and register it"
+    )
+    subcommands.add_parser(
         "init-config", help="Write a starter configuration file to edit"
     )
     subcommands.add_parser(
@@ -632,4 +683,6 @@ def run_command(arguments: argparse.Namespace, commands: PipelineCommands) -> in
         return commands.deliver_waiting_jobs()
     if arguments.command == "forget":
         return commands.forget_job(arguments.job_id)
+    if arguments.command == "refresh-key":
+        return commands.refresh_makemkv_key()
     return commands.show_configuration()

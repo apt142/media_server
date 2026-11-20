@@ -51,6 +51,7 @@ class EncodeService:
         announce=print,
         sleep=time.sleep,
         poll_seconds: float = POLL_SECONDS,
+        before_each_pass=lambda: None,
     ):
         self.configuration = configuration
         self.catalog = catalog
@@ -60,6 +61,9 @@ class EncodeService:
         self.delivery = delivery or LibraryDelivery(configuration, catalog)
         self.sleep = sleep
         self.poll_seconds = poll_seconds
+        # Housekeeping that wants doing regularly on a service that may run for
+        # weeks, rather than once at the top and never again.
+        self.before_each_pass = before_each_pass
         self.log = ServiceLog(announce)
 
     def serve_forever(self) -> None:
@@ -68,6 +72,7 @@ class EncodeService:
             f"Working the transcode queue. Delivering to {self.configuration.library_root}."
         )
         while True:
+            self.before_each_pass()
             self.run_one_pass()
             self.sleep(self.poll_seconds)
 

@@ -140,6 +140,7 @@ ever grows, and status is for seeing what is moving right now.
 | `deliver` | Moves everything finished onto the library drive |
 | `forget <id>` | Drops a job so its disc stops counting as a duplicate |
 | `config` | Shows the resolved folders |
+| `refresh-key` | Fetches MakeMKV's current beta key and registers it |
 | `init-config` | Writes a starter config file |
 | `install-agents` | Runs `watch` and `encode --forever` as background services |
 | `uninstall-agents` | Stops those services and removes them |
@@ -507,6 +508,43 @@ bitmaps into SRT text. Nothing here does that yet; see the root README.
 `PRAGMA table_info` on every open and issues the `ALTER TABLE`. Anything added
 to the table from here needs a line there too, with a default, so the jobs
 already recorded can answer for themselves.
+
+### Why the transcoder renews the MakeMKV key
+
+MakeMKV is free while in beta on a key that is posted publicly and rotates
+roughly every two months. When it lapses MakeMKV stops ripping, and what
+reaches the operator is a failed rip rather than a sentence about
+registration — a small chore with an annoying failure, and a wide gap between
+the two.
+
+So `encode` tops it up, which looks like the wrong place because transcoding
+never touches MakeMKV. The question is which command can. Ripping cannot: by
+then the disc is in the drive and a lapsed key has already become a failed
+rip. The encoder runs unattended, runs often, and has hours to spare, so it is
+the one that can notice in time for the next disc rather than after it.
+
+Three things keep it from being a liability in that path:
+
+- **It cannot fail an encode.** Every path out of `MakeMkvRegistration` ends in
+  a message. A forum that will not answer leaves the installed key alone, the
+  same bargain `film_lookup` makes with Wikidata.
+- **It is throttled** to one check every `HOURS_BETWEEN_CHECKS`, recorded in a
+  stamp file beside the catalog. The encoder's launchd agent restarts on a 30
+  second throttle, so an unthrottled check would become a web request every 30
+  seconds against a forum that is doing us a favour.
+- **It will not write while MakeMKV is running.** MakeMKV rewrites its whole
+  settings file from memory when it exits, so an edit made while the watcher
+  is mid-rip would be silently undone. It says so instead.
+
+`status` answers from the stamp file rather than the network, so it stays fast
+and works offline. The key is abbreviated there because the line gets read over
+someone's shoulder.
+
+The parser takes the key by its shape (`T-` and sixty-odd base64url characters)
+rather than by the page's markup, so a forum redesign costs nothing, and a miss
+leaves the old key in place rather than writing something that is not a key.
+The expiry is kept as prose — "end of November 2026" — because that is what the
+source says, and turning it into a date would invent a precision it lacks.
 
 ### Titles are provisional for now
 
